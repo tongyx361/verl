@@ -879,7 +879,7 @@ class RayPPOTrainer(object):
                     batch = batch.union(gen_batch_output)
 
                     print(f"Before mini-batching: {batch.batch = }")
-                    if self.config.mini_batch.balance_across_mini_batches:
+                    if self.config.algorithm.mini_batch.balance_across_mini_batches:
                         # balance the number of valid tokens on each dp rank.
                         # Note that this breaks the order of data inside the batch.
                         # Please take care when you implement group based adv computation such as GRPO and rloo
@@ -890,14 +890,14 @@ class RayPPOTrainer(object):
                         mini_batches = []
                         # Allow non-complete mini-batch, especially when we can't fill out a complete mini-batch
                         num_mini_batches = (len(batch) + traj_mini_bsz - 1) // traj_mini_bsz
-                        mini_batch_mode = self.config.mini_batch.mode
+                        mini_batch_mode = self.config.algorithm.mini_batch.mode
                         if mini_batch_mode == "random":
                             idxs = list(range(len(batch)))
                             random.seed(self.global_steps)
                             random.shuffle(idxs)
                             batch.reorder(torch.tensor(idxs))
                         elif mini_batch_mode in ["same", "diff"]:
-                            traj_grp_key = self.config.mini_batch.traj_group_key
+                            traj_grp_key = self.config.algorithm.mini_batch.traj_group_key
                             grp2idxs = defaultdict(list)
                             for i, grp in enumerate(batch.non_tensor_batch[traj_grp_key]):
                                 grp2idxs[grp].append(i)
@@ -905,10 +905,10 @@ class RayPPOTrainer(object):
                             for grp, idxs in grp2idxs.items():
                                 random.seed(self.global_steps)
                                 random.shuffle(idxs)
-                            if self.config.mini_batch.mode == "same":
+                            if self.config.algorithm.mini_batch.mode == "same":
                                 consecutive_idxs = torch.concat([torch.tensor(idxs) for idxs in grp2idxs.values()])
                                 batch.reorder(consecutive_idxs)
-                            elif self.config.mini_batch.mode == "diff":
+                            elif self.config.algorithm.mini_batch.mode == "diff":
                                 idx_mini_batches: list[list[int]] = [[] for _ in range(num_mini_batches)]
                                 for grp, idxs in grp2idxs.items():
                                     for i, idx in enumerate(idxs):
@@ -938,8 +938,8 @@ class RayPPOTrainer(object):
                     for _ in range(num_mini_batches):
                         mini_batch_traj_idxs = []
                         for dp_rank in range(num_dp_ranks):
-                            start_traj_idx = traj_bsz / num_dp_ranks * dp_rank
-                            end_traj_idx = start_traj_idx + traj_mini_bsz_per_rank
+                            start_traj_idx = int(traj_bsz / num_dp_ranks * dp_rank)
+                            end_traj_idx = int(start_traj_idx + traj_mini_bsz_per_rank)
                             mini_batch_traj_idxs.extend(list(range(start_traj_idx, end_traj_idx)))
                         mini_batch_resp_mask = batch.batch['response_mask'][mini_batch_traj_idxs]
                         mini_batch_loss_token_num = mini_batch_resp_mask.sum()
