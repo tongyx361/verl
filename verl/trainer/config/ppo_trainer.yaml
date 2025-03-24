@@ -177,6 +177,10 @@ algorithm:
   kl_ctrl:
     type: fixed
     kl_coef: 0.001
+  mini_batch:
+    balance_across_mini_batches: False
+    mode: random # / same / diff
+    traj_group_key: raw_problem_idx # / uid
 
 trainer:
   balance_batch: True

@@ -24,6 +24,8 @@ from enum import Enum
 from pprint import pprint
 from typing import Type, Dict
 from copy import deepcopy
+import random
+from collections import defaultdict
 
 import ray
 import numpy as np
@@ -743,8 +745,8 @@ class RayPPOTrainer(object):
         else:
             print(f"Warning: No dataloader state found at {dataloader_local_path}, will start from scratch")
 
-    def _balance_batch(self, batch: DataProto, metrics, logging_prefix='global_seqlen'):
-        """Reorder the data on single controller such that each dp rank gets similar total tokens"""
+    def _get_dp_balanced_info(self, batch: DataProto) -> tuple[list[list[int]], list[int]]:
+        """Get the information for dp balanced mini batches"""
         attention_mask = batch.batch['attention_mask']
         batch_size = attention_mask.shape[0]
         global_seqlen_lst = batch.batch['attention_mask'].view(batch_size, -1).sum(-1).tolist()  # (train_batch_size,)
@@ -752,13 +754,49 @@ class RayPPOTrainer(object):
         global_partition_lst = get_seqlen_balanced_partitions(global_seqlen_lst,
                                                               k_partitions=world_size,
                                                               equal_size=True)
+        return global_partition_lst, global_seqlen_lst
+
+    def _get_batch_balanced_in_mini_batch(self,
+                                          mini_batches: list[DataProto],
+                                          metrics=None,
+                                          logging_prefix='global_seqlen'):
+        """Reorder the mini batches such that each dp rank gets similar total tokens"""
+        world_size = self.actor_rollout_wg.world_size
+        batch_seqlens: list[int] = []
+        batch_idx_partitions: list[list[int]] = [[] for _ in range(world_size)]
+        in_batch_start_idx = 0
+        for mini_batch in mini_batches:
+            mini_batch_partitions, mini_batch_seqlens = self._get_dp_balanced_info(mini_batch)
+
+            for dp_rank in range(world_size):
+                batch_seqlens.extend(mini_batch_seqlens)
+                batch_idx_partitions[dp_rank].extend([i + in_batch_start_idx for i in mini_batch_partitions[dp_rank]])
+            in_batch_start_idx += len(mini_batch.batch)
+
+        batch = DataProto.concat(mini_batches)
+        in_batch_idxs = torch.concat([torch.tensor(partition) for partition in batch_idx_partitions])
+        batch.reorder(in_batch_idxs)
+
+        if metrics is not None:
+            global_balance_stats = log_seqlen_unbalance(seqlen_list=batch_seqlens,
+                                                        partitions=batch_idx_partitions,
+                                                        prefix=logging_prefix)
+            metrics.update(global_balance_stats)
+
+        return batch
+
+    def _balance_batch(self, batch: DataProto, metrics=None, logging_prefix='global_seqlen'):
+        """Reorder the data on single controller such that each dp rank gets similar total tokens"""
+        global_partition_lst, global_seqlen_lst = self._get_dp_balanced_info(batch)
         # reorder based on index. The data will be automatically equally partitioned by dispatch function
         global_idx = torch.tensor([j for partition in global_partition_lst for j in partition])
         batch.reorder(global_idx)
-        global_balance_stats = log_seqlen_unbalance(seqlen_list=global_seqlen_lst,
-                                                    partitions=global_partition_lst,
-                                                    prefix=logging_prefix)
-        metrics.update(global_balance_stats)
+
+        if metrics is not None:
+            global_balance_stats = log_seqlen_unbalance(seqlen_list=global_seqlen_lst,
+                                                        partitions=global_partition_lst,
+                                                        prefix=logging_prefix)
+            metrics.update(global_balance_stats)
 
     def fit(self):
         """
@@ -840,11 +878,53 @@ class RayPPOTrainer(object):
                     batch = batch.repeat(repeat_times=self.config.actor_rollout_ref.rollout.n, interleave=True)
                     batch = batch.union(gen_batch_output)
 
-                    # balance the number of valid tokens on each dp rank.
-                    # Note that this breaks the order of data inside the batch.
-                    # Please take care when you implement group based adv computation such as GRPO and rloo
-                    if self.config.trainer.balance_batch:
+                    print(f"Before mini-batching: {batch.batch = }")
+                    if self.config.mini_batch.balance_across_mini_batches:
+                        # balance the number of valid tokens on each dp rank.
+                        # Note that this breaks the order of data inside the batch.
+                        # Please take care when you implement group based adv computation such as GRPO and rloo
                         self._balance_batch(batch, metrics=metrics)
+                        train_seq_bsz = self.config.data.train_batch_size * self.config.actor_rollout_ref.rollout.n
+                        metrics["train/num_mini_batches"] = train_seq_bsz // traj_mini_bsz
+                    else:
+                        mini_batches = []
+                        # Allow non-complete mini-batch, especially when we can't fill out a complete mini-batch
+                        num_mini_batches = (len(batch) + traj_mini_bsz - 1) // traj_mini_bsz
+                        mini_batch_mode = self.config.mini_batch.mode
+                        if mini_batch_mode == "random":
+                            idxs = list(range(len(batch)))
+                            random.seed(self.global_steps)
+                            random.shuffle(idxs)
+                            batch.reorder(torch.tensor(idxs))
+                        elif mini_batch_mode in ["same", "diff"]:
+                            traj_grp_key = self.config.mini_batch.traj_group_key
+                            grp2idxs = defaultdict(list)
+                            for i, grp in enumerate(batch.non_tensor_batch[traj_grp_key]):
+                                grp2idxs[grp].append(i)
+                            # Trajectories in the same group are deemed isotropic
+                            for grp, idxs in grp2idxs.items():
+                                random.seed(self.global_steps)
+                                random.shuffle(idxs)
+                            if self.config.mini_batch.mode == "same":
+                                consecutive_idxs = torch.concat([torch.tensor(idxs) for idxs in grp2idxs.values()])
+                                batch.reorder(consecutive_idxs)
+                            elif self.config.mini_batch.mode == "diff":
+                                idx_mini_batches: list[list[int]] = [[] for _ in range(num_mini_batches)]
+                                for grp, idxs in grp2idxs.items():
+                                    for i, idx in enumerate(idxs):
+                                        idx_mini_batches[i % num_mini_batches].append(idx)
+                                interleaved_idxs = torch.concat([torch.tensor(idxs) for idxs in idx_mini_batches])
+                                batch.reorder(interleaved_idxs)
+                        else:
+                            raise ValueError(f"Unknown mini_batch_mode: {self.config.algorithm.mini_batch_mode = }")
+
+                        for i in range(0, len(batch), traj_mini_bsz):
+                            end_idx = min(i + traj_mini_bsz, len(batch))
+                            mini_batches.append(batch[i:end_idx])
+                        print(f"{mini_batches[0].batch = }")
+                        metrics["train/num_mini_batches"] = len(mini_batches)
+                        batch = self._get_batch_balanced_in_mini_batch(mini_batches, metrics)
+                    print(f"After mini-batching: {batch.batch = }")
 
                     # compute global_valid tokens
                     batch.meta_info['global_token_num'] = torch.sum(batch.batch['attention_mask'], dim=-1).tolist()
