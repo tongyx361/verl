@@ -898,7 +898,7 @@ class RayPPOTrainer(object):
                             end_idx = min(i + traj_mini_bsz, len(batch))
                             mini_batches.append(batch[i:end_idx])
                         print(f"{mini_batches[0].batch = }")
-                        metrics["train/num_mini_batches"] = len(mini_batches)
+                        metrics["mini_batch/num"] = len(mini_batches)
                         batch = self._get_batch_balanced_in_mini_batch(mini_batches, metrics)
                     print(f"After mini-batching: {batch.batch = }")
 
