@@ -848,6 +848,23 @@ class RayPPOTrainer(object):
 
                     # compute global_valid tokens
                     batch.meta_info['global_token_num'] = torch.sum(batch.batch['attention_mask'], dim=-1).tolist()
+                    # Calculate mini-batch loss token numbers
+                    num_dp_ranks = self.actor_rollout_wg.world_size
+                    mini_batch_token_nums = []
+                    traj_bsz = len(batch.batch)
+                    traj_mini_bsz = self.config.data.train_batch_size * self.config.actor_rollout_ref.rollout.n
+                    traj_mini_bsz_per_rank = traj_mini_bsz // num_dp_ranks
+                    num_mini_batches = traj_bsz // traj_mini_bsz
+                    for _ in range(num_mini_batches):
+                        mini_batch_traj_idxs = []
+                        for dp_rank in range(num_dp_ranks):
+                            start_traj_idx = traj_bsz / num_dp_ranks * dp_rank
+                            end_traj_idx = start_traj_idx + traj_mini_bsz_per_rank
+                            mini_batch_traj_idxs.extend(list(range(start_traj_idx, end_traj_idx)))
+                        mini_batch_resp_mask = batch.batch['response_mask'][mini_batch_traj_idxs]
+                        mini_batch_loss_token_num = mini_batch_resp_mask.sum()
+                        mini_batch_token_nums.append(mini_batch_loss_token_num)
+                    batch.meta_info["mini_batch_loss_token_nums"] = mini_batch_token_nums
 
                     # recompute old_log_probs
                     with _timer('old_log_prob', timing_raw):

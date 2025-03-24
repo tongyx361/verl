@@ -314,7 +314,10 @@ class DataParallelPPOActor(BasePPOActor):
 
                     if self.config.use_dynamic_bsz:
                         # relative to the dynamic bsz
-                        loss = policy_loss * (len(data) / self.config.ppo_mini_batch_size)
+                        # NOTE: Compatible with token-mean loss
+                        num_valid_toks = response_mask.sum()
+                        mini_batch_loss_token_num = data.meta_info['mini_batch_loss_token_nums'][batch_idx]
+                        loss = policy_loss * num_valid_toks / mini_batch_loss_token_num
                     else:
                         loss = policy_loss / self.gradient_accumulation
                     loss.backward()
