@@ -909,12 +909,13 @@ class RayPPOTrainer(object):
                     mini_batch_token_nums = []
                     traj_bsz = len(batch.batch)
                     traj_mini_bsz_per_rank = traj_mini_bsz // num_dp_ranks
-                    num_mini_batches = traj_bsz // traj_mini_bsz
+                    num_mini_batches = (traj_bsz + traj_mini_bsz - 1) // traj_mini_bsz
                     for _ in range(num_mini_batches):
                         mini_batch_traj_idxs = []
                         for dp_rank in range(num_dp_ranks):
                             start_traj_idx = int(traj_bsz / num_dp_ranks * dp_rank)
-                            end_traj_idx = int(start_traj_idx + traj_mini_bsz_per_rank)
+                            next_start_traj_idx = int(traj_bsz / num_dp_ranks * (dp_rank + 1))
+                            end_traj_idx = int(min(start_traj_idx + traj_mini_bsz_per_rank, next_start_traj_idx))
                             mini_batch_traj_idxs.extend(list(range(start_traj_idx, end_traj_idx)))
                         mini_batch_resp_mask = batch.batch['response_mask'][mini_batch_traj_idxs]
                         mini_batch_loss_token_num = mini_batch_resp_mask.sum()
