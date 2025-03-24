@@ -231,6 +231,7 @@ class DataParallelPPOActor(BasePPOActor):
         self.actor_module.train()
 
         temperature = data.meta_info['temperature']  # temperature must be in the data.meta_info to avoid slient error
+        mini_batch_loss_token_nums = data.meta_info['mini_batch_loss_token_nums']
 
         select_keys = ['responses', 'input_ids', 'attention_mask', 'position_ids', 'old_log_probs', 'advantages']
         if self.config.use_kl_loss:
@@ -249,9 +250,8 @@ class DataParallelPPOActor(BasePPOActor):
 
         metrics = {}
         for epoch in range(self.config.ppo_epochs):
-            for batch_idx, data in enumerate(dataloader):
+            for batch_idx, mini_batch in enumerate(dataloader):
                 # split batch into micro_batches
-                mini_batch = data
                 if has_multi_modal_inputs:
                     self.gradient_accumulation = self.config.ppo_mini_batch_size // self.config.ppo_micro_batch_size_per_gpu
                     num_micro_batches = mini_batch.batch.batch_size[0] // self.config.ppo_micro_batch_size_per_gpu
@@ -266,18 +266,22 @@ class DataParallelPPOActor(BasePPOActor):
 
                 self.actor_optimizer.zero_grad()
 
-                for data in micro_batches:
+                for micro_batch in micro_batches:
                     # Support all hardwares
-                    if isinstance(data, DataProto):
-                        data = {**data.batch.to(torch.cuda.current_device()), **data.non_tensor_batch}
+                    if isinstance(micro_batch, DataProto):
+                        micro_batch = {
+                            **micro_batch.batch.to(torch.cuda.current_device()),
+                            **micro_batch.non_tensor_batch
+                        }
                     else:
-                        data = data.to(torch.cuda.current_device())  # actor device is cpu when using offload
-                    responses = data['responses']
+                        micro_batch = micro_batch.to(
+                            torch.cuda.current_device())  # actor device is cpu when using offload
+                    responses = micro_batch['responses']
                     response_length = responses.size(1)
-                    attention_mask = data['attention_mask']
+                    attention_mask = micro_batch['attention_mask']
                     response_mask = attention_mask[:, -response_length:]
-                    old_log_prob = data['old_log_probs']
-                    advantages = data['advantages']
+                    old_log_prob = micro_batch['old_log_probs']
+                    advantages = micro_batch['advantages']
 
                     clip_ratio = self.config.clip_ratio
                     clip_ratio_low = self.config.clip_ratio_low
@@ -285,7 +289,7 @@ class DataParallelPPOActor(BasePPOActor):
                     entropy_coeff = self.config.entropy_coeff
 
                     # all return: (bsz, response_length)
-                    entropy, log_prob = self._forward_micro_batch(micro_batch=data, temperature=temperature)
+                    entropy, log_prob = self._forward_micro_batch(micro_batch=micro_batch, temperature=temperature)
 
                     pg_loss, pg_clipfrac, ppo_kl = core_algos.compute_policy_loss(old_log_prob=old_log_prob,
                                                                                   log_prob=log_prob,
@@ -316,7 +320,7 @@ class DataParallelPPOActor(BasePPOActor):
                         # relative to the dynamic bsz
                         # NOTE: Compatible with token-mean loss
                         num_valid_toks = response_mask.sum()
-                        mini_batch_loss_token_num = data.meta_info['mini_batch_loss_token_nums'][batch_idx]
+                        mini_batch_loss_token_num = mini_batch_loss_token_nums[batch_idx]
                         loss = policy_loss * num_valid_toks / mini_batch_loss_token_num
                     else:
                         loss = policy_loss / self.gradient_accumulation
