@@ -861,7 +861,7 @@ class RayPPOTrainer(object):
                         # Please take care when you implement group based adv computation such as GRPO and rloo
                         self._balance_batch(batch, metrics=metrics)
                         train_seq_bsz = self.config.data.train_batch_size * self.config.actor_rollout_ref.rollout.n
-                        metrics["train/num_mini_batches"] = train_seq_bsz // traj_mini_bsz
+                        metrics["mini_batch/num"] = train_seq_bsz // traj_mini_bsz
                     else:
                         mini_batches = []
                         # Allow non-complete mini-batch, especially when we can't fill out a complete mini-batch
