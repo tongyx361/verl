@@ -248,7 +248,8 @@ class RayPPOTrainer(object):
 
         self.role_worker_mapping = role_worker_mapping
         self.resource_pool_manager = resource_pool_manager
-        self.use_reference_policy = Role.RefPolicy in role_worker_mapping
+        use_kl = config.algorithm.kl_ctrl.kl_coef > 0 or config.actor_rollout_ref.actor.use_kl_loss
+        self.use_reference_policy = Role.RefPolicy in role_worker_mapping and use_kl
         self.use_rm = Role.RewardModel in role_worker_mapping
         self.ray_worker_group_cls = ray_worker_group_cls
         self.validation_generations_logger = ValidationGenerationsLogger()
