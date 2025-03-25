@@ -855,7 +855,7 @@ class RayPPOTrainer(object):
                     batch.batch['response_mask'] = attention_mask[:, -response_length:]
 
                     print(f"Before mini-batching: {batch.batch = }")
-                    traj_mini_bsz = self.config.data.train_batch_size * self.config.actor_rollout_ref.rollout.n
+                    traj_mini_bsz = self.config.actor_rollout_ref.actor.ppo_mini_batch_size * self.config.actor_rollout_ref.rollout.n
                     if self.config.algorithm.mini_batch.balance_across_mini_batches:
                         # balance the number of valid tokens on each dp rank.
                         # Note that this breaks the order of data inside the batch.
