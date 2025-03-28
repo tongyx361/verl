@@ -26,6 +26,7 @@ from typing import Type, Dict
 from copy import deepcopy
 import random
 from collections import defaultdict
+from tqdm import tqdm
 
 import ray
 import numpy as np
@@ -163,7 +164,17 @@ def apply_kl_penalty(data: DataProto, kl_ctrl: core_algos.AdaptiveKLController, 
     return data, metrics
 
 
+def compute_response_mask(data: DataProto):
+    responses = data.batch['responses']
+    response_length = responses.size(1)
+    attention_mask = data.batch['attention_mask']
+    return attention_mask[:, -response_length:]
+
+
 def compute_advantage(data: DataProto, adv_estimator, gamma=1.0, lam=1.0, num_repeat=1):
+    # Back-compatible with trainers that do not compute response mask in fit
+    if "response_mask" not in data.batch.keys():
+        data.batch['response_mask'] = compute_response_mask(data)
     # prepare response group
     # TODO: add other ways to estimate advantages
     if adv_estimator == AdvantageEstimator.GAE:
@@ -637,10 +648,21 @@ class RayPPOTrainer(object):
 
         actor_remote_path = None if self.config.trainer.default_hdfs_dir is None else os.path.join(
             self.config.trainer.default_hdfs_dir, f'global_step_{self.global_steps}', 'actor')
+
+        remove_previous_ckpt_in_save = self.config.trainer.get('remove_previous_ckpt_in_save', False)
+        if remove_previous_ckpt_in_save:
+            print(
+                'Warning: remove_previous_ckpt_in_save is deprecated, set max_actor_ckpt_to_keep=1 and max_critic_ckpt_to_keep=1 instead'
+            )
+        max_actor_ckpt_to_keep = self.config.trainer.get('max_actor_ckpt_to_keep',
+                                                         None) if not remove_previous_ckpt_in_save else 1
+        max_critic_ckpt_to_keep = self.config.trainer.get('max_critic_ckpt_to_keep',
+                                                          None) if not remove_previous_ckpt_in_save else 1
+
         self.actor_rollout_wg.save_checkpoint(actor_local_path,
                                               actor_remote_path,
                                               self.global_steps,
-                                              remove_previous_ckpt=self.config.trainer.remove_previous_ckpt_in_save)
+                                              max_ckpt_to_keep=max_actor_ckpt_to_keep)
 
         if self.use_critic:
             critic_local_path = os.path.join(local_global_step_folder, 'critic')
@@ -649,7 +671,7 @@ class RayPPOTrainer(object):
             self.critic_wg.save_checkpoint(critic_local_path,
                                            critic_remote_path,
                                            self.global_steps,
-                                           remove_previous_ckpt=self.config.trainer.remove_previous_ckpt_in_save)
+                                           max_ckpt_to_keep=max_critic_ckpt_to_keep)
 
         # save dataloader
         dataloader_local_path = os.path.join(local_global_step_folder, 'data.pt')
@@ -795,6 +817,9 @@ class RayPPOTrainer(object):
             logger.log(data=val_metrics, step=self.global_steps)
             if self.config.trainer.get('val_only', False):
                 return
+
+        # add tqdm
+        progress_bar = tqdm(total=self.total_training_steps, initial=self.global_steps, desc="Training Progress")
 
         # we start from step 1
         self.global_steps += 1
@@ -1010,6 +1035,8 @@ class RayPPOTrainer(object):
 
                 if is_last_step:
                     pprint(f'Final validation metrics: {last_val_metrics}')
+                    progress_bar.close()
                     return
 
+                progress_bar.update(1)
                 self.global_steps += 1
