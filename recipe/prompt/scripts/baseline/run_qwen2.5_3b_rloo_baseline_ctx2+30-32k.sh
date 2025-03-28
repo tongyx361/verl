@@ -2,7 +2,7 @@
 set -euxo pipefail
 
 project_name='rl-prompt'
-exp_name='qwen2.5-3b-rloo-baseline-ctx2+14k'
+exp_name='qwen2.5-3b-rloo-baseline-ctx2-14k'
 
 adv_estimator=rloo
 clip_ratio_low=0.2
