@@ -37,13 +37,6 @@ class LocalLogger:
 
         # Set up basic logging configuration if not already configured
         self.logger = logging.getLogger(__name__)
-        if not self.logger.handlers:
-            logging.basicConfig(
-                level=logging.INFO,
-                format=
-                "[%(levelname)s] [%(asctime)s.%(msecs)d] [pid %(process)d] [%(pathname)s:%(lineno)d:%(funcName)s] %(message)s",
-                datefmt="%Y-%m-%d %H:%M:%S",
-            )
 
     def log(self, data: Any, step: Optional[int] = None):
         if self.print_to_console:
