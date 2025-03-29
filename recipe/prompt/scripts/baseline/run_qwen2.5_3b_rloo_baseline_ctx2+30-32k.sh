@@ -71,8 +71,8 @@ save_freq=5
 offload=False
 
 use_dynamic_bsz=True
-actor_ppo_max_token_len=$((1024 * 2 * num_procs))
-infer_ppo_max_token_len=$((1024 * 2 * num_procs))
+actor_ppo_max_token_len=$((1024 * num_procs))
+infer_ppo_max_token_len=$((1024 * num_procs))
 
 ray job submit --no-wait --runtime-env="${RUNTIME_ENV}" \
     --working-dir "${WORKING_DIR}" \
