@@ -19,6 +19,11 @@ top_p=1
 
 # Config
 TEST=${TEST:-"0"}
+# Ray
+RAY_ADDRESS=${RAY_ADDRESS:-"http://localhost:8265"}
+WORKING_DIR=${WORKING_DIR:-"${PWD}"}
+RUNTIME_ENV=${RUNTIME_ENV:-"${WORKING_DIR}/verl/trainer/runtime_env.yaml"}
+NNODES=${NNODES:-4}
 
 if [ "${TEST}" != "1" ]; then
     max_prompt_length=$((1024 * 2))
@@ -28,16 +33,11 @@ if [ "${TEST}" != "1" ]; then
 else
     max_prompt_length=$((1024 * 2))
     max_response_length=$((1024 * 2))
-    train_batch_size=32
     num_bon=2
+    train_batch_size=$((NNODES * 8 / num_bon))
     exp_name="${exp_name}-test"
 fi
 
-# Ray
-RAY_ADDRESS=${RAY_ADDRESS:-"http://localhost:8265"}
-WORKING_DIR=${WORKING_DIR:-"${PWD}"}
-RUNTIME_ENV=${RUNTIME_ENV:-"${WORKING_DIR}/verl/trainer/runtime_env.yaml"}
-NNODES=${NNODES:-4}
 # Paths
 RAY_DATA_HOME=${RAY_DATA_HOME:-"${HOME}/verl"}
 MODEL_PATH=${MODEL_PATH:-"${RAY_DATA_HOME}/models/Qwen2.5-7B"}
@@ -117,8 +117,6 @@ ray job submit --no-wait --runtime-env="${RUNTIME_ENV}" \
     actor_rollout_ref.rollout.val_kwargs.top_p=${top_p} \
     actor_rollout_ref.rollout.val_kwargs.n=64 \
     actor_rollout_ref.rollout.val_kwargs.do_sample=True \
-    actor_rollout_ref.rollout.enable_chunked_prefill=True \
-    actor_rollout_ref.rollout.max_num_batched_tokens=$((max_prompt_length + max_response_length)) \
     custom_reward_function.name="compute_score" \
     trainer.logger=['console','wandb'] \
     trainer.project_name=${project_name} \
