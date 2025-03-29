@@ -24,18 +24,29 @@ WORKING_DIR=${WORKING_DIR:-"${PWD}"}
 RUNTIME_ENV=${RUNTIME_ENV:-"${WORKING_DIR}/verl/trainer/runtime_env.yaml"}
 NNODES=${NNODES:-4}
 
+sp_size=8
+num_procs_per_node=8
+num_procs=$((NNODES * num_procs_per_node))
+train_dp_size=$((num_procs / sp_size))
+fsdp_size=-1
+gen_tp=1
+gen_dp_size=$((num_procs / gen_tp))
+
 if [ "${TEST}" != "1" ]; then
     max_prompt_length=$((1024 * 2))
     max_response_length=$((1024 * 6))
     train_batch_size=512
-    num_bon=16
+    n_trajs_per_prompt=16
     num_updates_per_batch=1
     exp_name="qwen2.5-7b-rloo-baseline-bs512x16-update${num_updates_per_batch}"
 else
     max_prompt_length=$((1024 * 2))
     max_response_length=$((1024 * 2))
-    num_bon=2
-    train_batch_size=$((NNODES * 8)) # Prompt batch dispatched to generation DP ranks
+    n_trajs_per_prompt=2
+    train_batch_size=$((num_procs / n_trajs_per_prompt))
+    if [ $train_batch_size -lt $gen_dp_size ]; then
+        train_batch_size=$gen_dp_size
+    fi
     num_updates_per_batch=1
     exp_name="qwen2.5-7b-rloo-baseline-bs512x2-update${num_updates_per_batch}-test"
 fi
@@ -58,14 +69,11 @@ lr_warmup_steps=10
 test_freq=5
 save_freq=5
 
-actor_sp_size=4
-ref_sp_size=4
-use_dynamic_bsz=True
-actor_ppo_max_token_len=$((1024 * 8 * NNODES))
-infer_ppo_max_token_len=$((1024 * 8 * NNODES))
-fsdp_size=-1
-gen_tp=1
 offload=False
+
+use_dynamic_bsz=True
+actor_ppo_max_token_len=$((1024 * 2 * num_procs))
+infer_ppo_max_token_len=$((1024 * 2 * num_procs))
 
 ray job submit --no-wait --runtime-env="${RUNTIME_ENV}" \
     --working-dir "${WORKING_DIR}" \
@@ -79,7 +87,7 @@ ray job submit --no-wait --runtime-env="${RUNTIME_ENV}" \
     data.train_batch_size=${train_batch_size} \
     data.truncation='left' \
     critic.ppo_epochs=${ppo_epochs} \
-    actor_rollout_ref.rollout.n=${num_bon} \
+    actor_rollout_ref.rollout.n=${n_trajs_per_prompt} \
     actor_rollout_ref.actor.kl_loss_coef=${kl_loss_coef} \
     actor_rollout_ref.actor.clip_ratio_low=${clip_ratio_low} \
     actor_rollout_ref.actor.clip_ratio_high=${clip_ratio_high} \
@@ -107,11 +115,11 @@ ray job submit --no-wait --runtime-env="${RUNTIME_ENV}" \
     actor_rollout_ref.actor.entropy_coeff=${entropy_coeff} \
     actor_rollout_ref.actor.grad_clip=${grad_clip} \
     actor_rollout_ref.actor.use_kl_loss=${use_kl_loss} \
-    actor_rollout_ref.actor.ulysses_sequence_parallel_size=${actor_sp_size} \
+    actor_rollout_ref.actor.ulysses_sequence_parallel_size=${sp_size} \
     actor_rollout_ref.rollout.gpu_memory_utilization=0.9 \
     actor_rollout_ref.rollout.tensor_model_parallel_size=${gen_tp} \
     actor_rollout_ref.ref.fsdp_config.param_offload=${offload} \
-    actor_rollout_ref.ref.ulysses_sequence_parallel_size=${ref_sp_size} \
+    actor_rollout_ref.ref.ulysses_sequence_parallel_size=${sp_size} \
     actor_rollout_ref.actor.fsdp_config.fsdp_size=${fsdp_size} \
     actor_rollout_ref.rollout.temperature=${temperature} \
     actor_rollout_ref.rollout.top_p=${top_p} \
