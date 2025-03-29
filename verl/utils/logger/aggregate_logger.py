@@ -14,6 +14,7 @@
 """
 A Ray logger will receive logging info from different processes.
 """
+import logging
 import numbers
 from typing import Dict
 
@@ -32,11 +33,21 @@ class LocalLogger:
     def __init__(self, remote_logger=None, enable_wandb=False, print_to_console=False):
         self.print_to_console = print_to_console
         if print_to_console:
-            print('Using LocalLogger is deprecated. The constructor API will change ')
+            logging.warning('Using LocalLogger is deprecated. The constructor API will change')
 
-    def flush(self):
-        pass
+        # Set up basic logging configuration if not already configured
+        self.logger = logging.getLogger(__name__)
+        if not self.logger.handlers:
+            logging.basicConfig(
+                level=logging.INFO,
+                format=
+                "[%(levelname)s] [%(asctime)s.%(msecs)d] [pid %(process)d] [%(pathname)s:%(lineno)d:%(funcName)s] %(message)s",
+                datefmt="%Y-%m-%d %H:%M:%S",
+            )
 
     def log(self, data, step):
         if self.print_to_console:
-            print(concat_dict_to_str(data, step=step), flush=True)
+            if isinstance(data, dict):
+                self.logger.info(concat_dict_to_str(data, step=step))
+            else:
+                self.logger.info(f"[{step=}] {data}")

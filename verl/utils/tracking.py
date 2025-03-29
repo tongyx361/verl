@@ -95,6 +95,8 @@ class Tracking(object):
     def log(self, data, step, backend=None):
         for default_backend, logger_instance in self.logger.items():
             if backend is None or default_backend in backend:
+                if isinstance(data, str) and default_backend != 'console':
+                    continue
                 logger_instance.log(data=data, step=step)
 
     def __del__(self):
