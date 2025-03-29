@@ -21,7 +21,6 @@ import uuid
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from enum import Enum
-from pprint import pprint
 from typing import Type, Dict
 from copy import deepcopy
 import random
@@ -48,6 +47,8 @@ from torch.utils.data import RandomSampler, SequentialSampler
 from torchdata.stateful_dataloader import StatefulDataLoader
 
 WorkerType = Type[Worker]
+
+logger = None
 
 
 class Role(Enum):
@@ -222,11 +223,11 @@ def compute_advantage(data: DataProto, adv_estimator, gamma=1.0, lam=1.0, num_re
 
 @contextmanager
 def _timer(name: str, timing_raw: Dict[str, float]):
-    print(f'{name} start at {datetime.now()}')
+    logger.log(f'{name} starts at {datetime.now()}')
     with Timer(name=name, logger=None) as timer:
         yield
     timing_raw[name] = timer.last
-    print(f'{name} end at {datetime.now()} after {timer.last} seconds')
+    logger.log(f'{name} ends at {datetime.now()} after {timer.last} seconds')
 
 
 class RayPPOTrainer(object):
@@ -376,7 +377,7 @@ class RayPPOTrainer(object):
                     "When using sequence parallelism for critic, you must enable `use_remove_padding`."
 
         if config.data.get('val_batch_size', None) is not None:
-            print(
+            logger.log(
                 f"WARNING: val_batch_size is deprecated. Validation datasets are sent to inference engines as a whole batch, which will schedule the memory themselves."
             )
 
@@ -385,7 +386,7 @@ class RayPPOTrainer(object):
             assert config.actor_rollout_ref.rollout.temperature > 0, \
                 "validation gen temperature should be greater than 0 when enabling do_sample"
 
-        print("[validate_config] All configuration checks passed successfully!")
+        logger.log("[validate_config] All configuration checks passed successfully!")
 
     def _create_dataloader(self):
         # TODO: we have to make sure the batch size is divisible by the dp size
@@ -445,7 +446,7 @@ class RayPPOTrainer(object):
             self.val_dataloader
         ) == 1, "Validation dataloader must have a single batch, which inference engines will schedule the memory themselves."
 
-        print(f'Size of train dataloader: {len(self.train_dataloader)}')
+        logger.log(f'Size of train dataloader: {len(self.train_dataloader)}')
 
         # inject total_training_steps to actor/critic optim_config. This is hacky.
         total_training_steps = len(self.train_dataloader) * self.config.trainer.total_epochs
@@ -454,7 +455,7 @@ class RayPPOTrainer(object):
             total_training_steps = self.config.trainer.total_training_steps
 
         self.total_training_steps = total_training_steps
-        print(f'Total training steps: {self.total_training_steps}')
+        logger.log(f'Total training steps: {self.total_training_steps}')
 
         OmegaConf.set_struct(self.config, True)
         with open_dict(self.config):
@@ -528,7 +529,7 @@ class RayPPOTrainer(object):
                 'do_sample': self.config.actor_rollout_ref.rollout.val_kwargs.do_sample,
                 'validate': True,
             }
-            print(f'test_gen_batch meta info: {test_gen_batch.meta_info}')
+            logger.log(f'test_gen_batch meta info: {test_gen_batch.meta_info}')
 
             # pad to be divisible by dp_size
             test_gen_batch_padded, pad_size = pad_dataproto_to_divisor(test_gen_batch, self.actor_rollout_wg.world_size)
@@ -536,7 +537,7 @@ class RayPPOTrainer(object):
 
             # unpad
             test_output_gen_batch = unpad_dataproto(test_output_gen_batch_padded, pad_size=pad_size)
-            print('validation generation end')
+            logger.log('validation generation end')
 
             # Store generated outputs
             output_ids = test_output_gen_batch.batch['responses']
@@ -646,7 +647,7 @@ class RayPPOTrainer(object):
         local_global_step_folder = os.path.join(self.config.trainer.default_local_dir,
                                                 f'global_step_{self.global_steps}')
 
-        print(f'local_global_step_folder: {local_global_step_folder}')
+        logger.log(f'local_global_step_folder: {local_global_step_folder}')
         actor_local_path = os.path.join(local_global_step_folder, 'actor')
 
         actor_remote_path = None if self.config.trainer.default_hdfs_dir is None else os.path.join(
@@ -654,7 +655,7 @@ class RayPPOTrainer(object):
 
         remove_previous_ckpt_in_save = self.config.trainer.get('remove_previous_ckpt_in_save', False)
         if remove_previous_ckpt_in_save:
-            print(
+            logger.log(
                 'Warning: remove_previous_ckpt_in_save is deprecated, set max_actor_ckpt_to_keep=1 and max_critic_ckpt_to_keep=1 instead'
             )
         max_actor_ckpt_to_keep = self.config.trainer.get('max_actor_ckpt_to_keep',
@@ -704,22 +705,22 @@ class RayPPOTrainer(object):
         # find global_step_folder
         if self.config.trainer.resume_mode == 'auto':
             if global_step_folder is None:
-                print('Training from scratch')
+                logger.log('Training from scratch')
                 return 0
         else:
-            if not (self.config.trainer.resume_from_path and global_step_folder is not None):
-                assert isinstance(self.config.trainer.resume_mode, str), "resume ckpt must be str type"
-                assert 'global_step_' in self.config.trainer.resume_mode, "resume ckpt must specify the global_steps"
-                global_step_folder = self.config.trainer.resume_mode
+            if self.config.trainer.resume_mode == "resume_path":
+                assert isinstance(self.config.trainer.resume_from_path, str), "resume ckpt must be str type"
+                assert 'global_step_' in self.config.trainer.resume_from_path, "resume ckpt must specify the global_steps"
+                global_step_folder = self.config.trainer.resume_from_path
                 if not os.path.isabs(global_step_folder):
                     working_dir = os.getcwd()
                     global_step_folder = os.path.join(working_dir, global_step_folder)
-        print(f'Load from checkpoint folder: {global_step_folder}')
+        logger.log(f'Load from checkpoint folder: {global_step_folder}')
         # set global step
         self.global_steps = int(global_step_folder.split('global_step_')[-1])
 
-        print(f'Setting global step to {self.global_steps}')
-        print(f'Resuming from {global_step_folder}')
+        logger.log(f'Setting global step to {self.global_steps}')
+        logger.log(f'Resuming from {global_step_folder}')
 
         actor_path = os.path.join(global_step_folder, 'actor')
         critic_path = os.path.join(global_step_folder, 'critic')
@@ -738,7 +739,7 @@ class RayPPOTrainer(object):
             dataloader_state_dict = torch.load(dataloader_local_path, weights_only=False)
             self.train_dataloader.load_state_dict(dataloader_state_dict)
         else:
-            print(f"Warning: No dataloader state found at {dataloader_local_path}, will start from scratch")
+            logger.log(f"Warning: No dataloader state found at {dataloader_local_path}, will start from scratch")
 
     def _get_dp_balanced_info(self, batch: DataProto) -> tuple[list[list[int]], list[int]]:
         """Get the information for dp balanced mini batches"""
@@ -802,6 +803,7 @@ class RayPPOTrainer(object):
         from verl.utils.tracking import Tracking
         from omegaconf import OmegaConf
 
+        global logger
         logger = Tracking(project_name=self.config.trainer.project_name,
                           experiment_name=self.config.trainer.experiment_name,
                           default_backend=self.config.trainer.logger,
@@ -816,7 +818,6 @@ class RayPPOTrainer(object):
         # currently, we only support validation using the reward_function.
         if self.val_reward_fn is not None and self.config.trainer.get('val_before_train', True):
             val_metrics = self._validate()
-            pprint(f'Initial validation metrics: {val_metrics}')
             logger.log(data=val_metrics, step=self.global_steps)
             if self.config.trainer.get('val_only', False):
                 return
@@ -1037,7 +1038,6 @@ class RayPPOTrainer(object):
                 logger.log(data=metrics, step=self.global_steps)
 
                 if is_last_step:
-                    pprint(f'Final validation metrics: {last_val_metrics}')
                     progress_bar.close()
                     return
 
