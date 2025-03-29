@@ -43,8 +43,11 @@ else
     max_prompt_length=$((1024 * 2))
     max_response_length=$((1024 * 2))
     n_trajs_per_prompt=2
+    train_batch_size=$((num_procs / n_trajs_per_prompt))
+    if [ $train_batch_size -lt $gen_dp_size ]; then
+        train_batch_size=$gen_dp_size
+    fi
     num_updates_per_batch=16
-    ppo_mini_batch_size=$((NNODES * 8 / n_trajs_per_prompt))
     exp_name="qwen2.5-7b-rloo-baseline-update${num_updates_per_batch}-test"
 fi
 
@@ -65,11 +68,6 @@ lr_warmup_steps=10
 
 test_freq=5
 save_freq=5
-
-num_procs=$((NNODES * num_procs_per_node))
-train_dp_size=$((num_procs / sp_size))
-fsdp_size=-1
-gen_tp=1
 
 offload=False
 
