@@ -21,10 +21,9 @@ import uuid
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Type, Dict
+from typing import Type, Dict, Callable, Optional
 from copy import deepcopy
 from tqdm import tqdm
-from datetime import datetime
 
 import ray
 import numpy as np
@@ -40,13 +39,12 @@ from verl.trainer.ppo.metric_utils import compute_data_metrics, compute_througho
 from verl.utils.seqlen_balancing import get_seqlen_balanced_partitions, log_seqlen_unbalance
 from verl.utils.checkpoint.checkpoint_manager import find_latest_ckpt_path
 from verl.utils.dataset.rl_dataset import RLHFDataset, collate_fn
-from verl.utils.tracking import ValidationGenerationsLogger
+from verl.utils.tracking import Tracking, ValidationGenerationsLogger
+
 from torch.utils.data import RandomSampler, SequentialSampler
 from torchdata.stateful_dataloader import StatefulDataLoader
 
 WorkerType = Type[Worker]
-
-logger = None
 
 
 class Role(Enum):
@@ -137,12 +135,12 @@ from verl.utils.torch_functional import masked_mean
 
 
 def apply_kl_penalty(data: DataProto, kl_ctrl: core_algos.AdaptiveKLController, kl_penalty='kl'):
-    responses = data.batch['responses']
-    response_length = responses.size(1)
+    # Back-compatible with trainers that do not compute response mask in fit
+    if "response_mask" not in data.batch.keys():
+        data.batch['response_mask'] = compute_response_mask(data)
+    response_mask = data.batch["response_mask"]
     token_level_scores = data.batch['token_level_scores']
     batch_size = data.batch.batch_size[0]
-    attention_mask = data.batch['attention_mask']
-    response_mask = attention_mask[:, -response_length:]
 
     # compute kl between ref_policy and current policy
     if 'ref_log_prob' in data.batch.keys():
@@ -182,7 +180,6 @@ def compute_advantage(data: DataProto, adv_estimator, gamma=1.0, lam=1.0, num_re
     # prepare response group
     # TODO: add other ways to estimate advantages
     if adv_estimator == AdvantageEstimator.GAE:
-        values = data.batch['values']
         advantages, returns = core_algos.compute_gae_advantage_return(
             token_level_rewards=data.batch['token_level_rewards'],
             values=data.batch['values'],
@@ -224,12 +221,10 @@ def compute_advantage(data: DataProto, adv_estimator, gamma=1.0, lam=1.0, num_re
 
 
 @contextmanager
-def _timer(name: str, timing_raw: Dict[str, float]):
-    logger.log(f'{name} starts at {datetime.now()}')
-    with Timer(name=name, logger=None) as timer:
+def _timer(name: str, timing_raw: Dict[str, float], log_fn: Optional[Callable[[str], None]] = print):
+    with Timer(name=name, logger=log_fn) as timer:
         yield
     timing_raw[name] = timer.last
-    logger.log(f'{name} ends at {datetime.now()} after {timer.last} seconds')
 
 
 class RayPPOTrainer(object):
@@ -250,10 +245,15 @@ class RayPPOTrainer(object):
                  val_reward_fn=None):
 
         # assert torch.cuda.is_available(), 'cuda must be available on driver'
+        self.config = config
+
+        self.logger = Tracking(project_name=self.config.trainer.project_name,
+                               experiment_name=self.config.trainer.experiment_name,
+                               default_backend=self.config.trainer.logger,
+                               config=OmegaConf.to_container(self.config, resolve=True))
 
         self.tokenizer = tokenizer
         self.processor = processor
-        self.config = config
         self.reward_fn = reward_fn
         self.val_reward_fn = val_reward_fn
 
@@ -378,8 +378,8 @@ class RayPPOTrainer(object):
                     "When using sequence parallelism for critic, you must enable `use_remove_padding`."
 
         if config.data.get('val_batch_size', None) is not None:
-            logger.log(
-                f"WARNING: val_batch_size is deprecated. Validation datasets are sent to inference engines as a whole batch, which will schedule the memory themselves."
+            self.logger.log(
+                "WARNING: val_batch_size is deprecated. Validation datasets are sent to inference engines as a whole batch, which will schedule the memory themselves."
             )
 
         # check eval config
@@ -387,7 +387,7 @@ class RayPPOTrainer(object):
             assert config.actor_rollout_ref.rollout.temperature > 0, \
                 "validation gen temperature should be greater than 0 when enabling do_sample"
 
-        logger.log("[validate_config] All configuration checks passed successfully!")
+        self.logger.log("[validate_config] All configuration checks passed successfully!")
 
     def _create_dataloader(self):
         # TODO: we have to make sure the batch size is divisible by the dp size
@@ -447,7 +447,7 @@ class RayPPOTrainer(object):
             self.val_dataloader
         ) == 1, "Validation dataloader must have a single batch, which inference engines will schedule the memory themselves."
 
-        logger.log(f'Size of train dataloader: {len(self.train_dataloader)}')
+        self.logger.log(f'Size of train dataloader: {len(self.train_dataloader)}')
 
         # inject total_training_steps to actor/critic optim_config. This is hacky.
         total_training_steps = len(self.train_dataloader) * self.config.trainer.total_epochs
@@ -456,7 +456,7 @@ class RayPPOTrainer(object):
             total_training_steps = self.config.trainer.total_training_steps
 
         self.total_training_steps = total_training_steps
-        logger.log(f'Total training steps: {self.total_training_steps}')
+        self.logger.log(f'Total training steps: {self.total_training_steps}')
 
         OmegaConf.set_struct(self.config, True)
         with open_dict(self.config):
@@ -530,7 +530,7 @@ class RayPPOTrainer(object):
                 'do_sample': self.config.actor_rollout_ref.rollout.val_kwargs.do_sample,
                 'validate': True,
             }
-            logger.log(f'test_gen_batch meta info: {test_gen_batch.meta_info}')
+            self.logger.log(f'test_gen_batch meta info: {test_gen_batch.meta_info}')
 
             # pad to be divisible by dp_size
             test_gen_batch_padded, pad_size = pad_dataproto_to_divisor(test_gen_batch, self.actor_rollout_wg.world_size)
@@ -538,7 +538,7 @@ class RayPPOTrainer(object):
 
             # unpad
             test_output_gen_batch = unpad_dataproto(test_output_gen_batch_padded, pad_size=pad_size)
-            logger.log('validation generation end')
+            self.logger.log('validation generation end')
 
             # Store generated outputs
             output_ids = test_output_gen_batch.batch['responses']
@@ -648,7 +648,7 @@ class RayPPOTrainer(object):
         local_global_step_folder = os.path.join(self.config.trainer.default_local_dir,
                                                 f'global_step_{self.global_steps}')
 
-        logger.log(f'local_global_step_folder: {local_global_step_folder}')
+        self.logger.log(f'local_global_step_folder: {local_global_step_folder}')
         actor_local_path = os.path.join(local_global_step_folder, 'actor')
 
         actor_remote_path = None if self.config.trainer.default_hdfs_dir is None else os.path.join(
@@ -656,7 +656,7 @@ class RayPPOTrainer(object):
 
         remove_previous_ckpt_in_save = self.config.trainer.get('remove_previous_ckpt_in_save', False)
         if remove_previous_ckpt_in_save:
-            logger.log(
+            self.logger.log(
                 'Warning: remove_previous_ckpt_in_save is deprecated, set max_actor_ckpt_to_keep=1 and max_critic_ckpt_to_keep=1 instead'
             )
         max_actor_ckpt_to_keep = self.config.trainer.get('max_actor_ckpt_to_keep',
@@ -706,7 +706,7 @@ class RayPPOTrainer(object):
         # find global_step_folder
         if self.config.trainer.resume_mode == 'auto':
             if global_step_folder is None:
-                logger.log('Training from scratch')
+                self.logger.log('Training from scratch')
                 return 0
         else:
             if self.config.trainer.resume_mode == "resume_path":
@@ -716,12 +716,12 @@ class RayPPOTrainer(object):
                 if not os.path.isabs(global_step_folder):
                     working_dir = os.getcwd()
                     global_step_folder = os.path.join(working_dir, global_step_folder)
-        logger.log(f'Load from checkpoint folder: {global_step_folder}')
+        self.logger.log(f'Load from checkpoint folder: {global_step_folder}')
         # set global step
         self.global_steps = int(global_step_folder.split('global_step_')[-1])
 
-        logger.log(f'Setting global step to {self.global_steps}')
-        logger.log(f'Resuming from {global_step_folder}')
+        self.logger.log(f'Setting global step to {self.global_steps}')
+        self.logger.log(f'Resuming from {global_step_folder}')
 
         actor_path = os.path.join(global_step_folder, 'actor')
         critic_path = os.path.join(global_step_folder, 'critic')
@@ -740,7 +740,7 @@ class RayPPOTrainer(object):
             dataloader_state_dict = torch.load(dataloader_local_path, weights_only=False)
             self.train_dataloader.load_state_dict(dataloader_state_dict)
         else:
-            logger.log(f"Warning: No dataloader state found at {dataloader_local_path}, will start from scratch")
+            self.logger.log(f"Warning: No dataloader state found at {dataloader_local_path}, will start from scratch")
 
     def _balance_batch(self, batch: DataProto, metrics, logging_prefix='global_seqlen'):
         """Reorder the data on single controller such that each dp rank gets similar total tokens"""
@@ -765,15 +765,6 @@ class RayPPOTrainer(object):
         The driver process only need to call the compute functions of the worker group through RPC to construct the PPO dataflow.
         The light-weight advantage computation is done on the driver process.
         """
-        from verl.utils.tracking import Tracking
-        from omegaconf import OmegaConf
-
-        global logger
-        logger = Tracking(project_name=self.config.trainer.project_name,
-                          experiment_name=self.config.trainer.experiment_name,
-                          default_backend=self.config.trainer.logger,
-                          config=OmegaConf.to_container(self.config, resolve=True))
-
         self.global_steps = 0
 
         # load checkpoint before doing anything
@@ -783,7 +774,7 @@ class RayPPOTrainer(object):
         # currently, we only support validation using the reward_function.
         if self.val_reward_fn is not None and self.config.trainer.get('val_before_train', True):
             val_metrics = self._validate()
-            logger.log(data=val_metrics, step=self.global_steps)
+            self.logger.log(data=val_metrics, step=self.global_steps)
             if self.config.trainer.get('val_only', False):
                 return
 
@@ -935,7 +926,7 @@ class RayPPOTrainer(object):
                 metrics.update(compute_throughout_metrics(batch=batch, timing_raw=timing_raw, n_gpus=n_gpus))
 
                 # TODO: make a canonical logger that supports various backend
-                logger.log(data=metrics, step=self.global_steps)
+                self.logger.log(data=metrics, step=self.global_steps)
 
                 if is_last_step:
                     progress_bar.close()
