@@ -38,6 +38,7 @@ if [ "${TEST}" != "1" ]; then
     max_response_length=$((1024 * 14))
     train_batch_size=1024
     n_trajs_per_prompt=64
+    val_n=64
 else
     max_prompt_length=$((1024 * 2))
     max_response_length=$((1024 * 2))
@@ -47,6 +48,7 @@ else
         train_batch_size=$gen_dp_size
     fi
     exp_name="${exp_name}-test"
+    val_n=1
 fi
 
 # Paths
@@ -122,7 +124,7 @@ ray job submit --no-wait --runtime-env="${RUNTIME_ENV}" \
     actor_rollout_ref.rollout.top_p=${top_p} \
     actor_rollout_ref.rollout.val_kwargs.temperature=${temperature} \
     actor_rollout_ref.rollout.val_kwargs.top_p=${top_p} \
-    actor_rollout_ref.rollout.val_kwargs.n=64 \
+    actor_rollout_ref.rollout.val_kwargs.n=${val_n} \
     actor_rollout_ref.rollout.val_kwargs.do_sample=True \
     actor_rollout_ref.rollout.enable_chunked_prefill=True \
     actor_rollout_ref.rollout.max_num_batched_tokens=$((max_prompt_length + max_response_length)) \

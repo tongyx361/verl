@@ -39,6 +39,7 @@ if [ "${TEST}" != "1" ]; then
     n_trajs_per_prompt=16
     num_updates_per_batch=1
     exp_name="qwen2.5-7b-rloo-baseline-bs512x16-update${num_updates_per_batch}"
+    val_n=64
 else
     max_prompt_length=$((1024 * 2))
     max_response_length=$((1024 * 2))
@@ -49,6 +50,7 @@ else
     fi
     num_updates_per_batch=1
     exp_name="qwen2.5-7b-rloo-baseline-bs512x2-update${num_updates_per_batch}-test"
+    val_n=1
 fi
 
 # Paths
@@ -125,7 +127,7 @@ ray job submit --no-wait --runtime-env="${RUNTIME_ENV}" \
     actor_rollout_ref.rollout.top_p=${top_p} \
     actor_rollout_ref.rollout.val_kwargs.temperature=${temperature} \
     actor_rollout_ref.rollout.val_kwargs.top_p=${top_p} \
-    actor_rollout_ref.rollout.val_kwargs.n=64 \
+    actor_rollout_ref.rollout.val_kwargs.n=${val_n} \
     actor_rollout_ref.rollout.val_kwargs.do_sample=True \
     actor_rollout_ref.rollout.enable_chunked_prefill=True \
     actor_rollout_ref.rollout.max_num_batched_tokens=$((max_prompt_length + max_response_length)) \
