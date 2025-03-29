@@ -71,8 +71,8 @@ save_freq=5
 offload=False
 
 use_dynamic_bsz=True
-actor_ppo_max_token_len=$((1024 * num_procs))
-infer_ppo_max_token_len=$((1024 * num_procs))
+actor_ppo_max_token_len=$((512 * num_procs))
+infer_ppo_max_token_len=$((512 * num_procs))
 
 ray job submit --no-wait --runtime-env="${RUNTIME_ENV}" \
     --working-dir "${WORKING_DIR}" \
@@ -108,14 +108,14 @@ ray job submit --no-wait --runtime-env="${RUNTIME_ENV}" \
     actor_rollout_ref.actor.optim.lr=${actor_lr} \
     actor_rollout_ref.actor.optim.lr_warmup_steps=${lr_warmup_steps} \
     actor_rollout_ref.actor.optim.weight_decay=${weight_decay} \
-    actor_rollout_ref.actor.ppo_mini_batch_size=${ppo_mini_batch_size} \
+    actor_rollout_ref.actor.ppo_mini_batch_size="${ppo_mini_batch_size}" \
     actor_rollout_ref.actor.fsdp_config.param_offload=${offload} \
     actor_rollout_ref.actor.fsdp_config.optimizer_offload=${offload} \
     actor_rollout_ref.actor.entropy_coeff=${entropy_coeff} \
     actor_rollout_ref.actor.grad_clip=${grad_clip} \
     actor_rollout_ref.actor.use_kl_loss=${use_kl_loss} \
     actor_rollout_ref.actor.ulysses_sequence_parallel_size=${sp_size} \
-    actor_rollout_ref.rollout.gpu_memory_utilization=0.9 \
+    actor_rollout_ref.rollout.gpu_memory_utilization=0.8 \
     actor_rollout_ref.rollout.tensor_model_parallel_size=${gen_tp} \
     actor_rollout_ref.ref.fsdp_config.param_offload=${offload} \
     actor_rollout_ref.ref.ulysses_sequence_parallel_size=${sp_size} \
