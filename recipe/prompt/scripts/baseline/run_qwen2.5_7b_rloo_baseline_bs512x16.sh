@@ -39,7 +39,7 @@ if [ "${TEST}" != "1" ]; then
     n_trajs_per_prompt=16
     num_updates_per_batch=1
     exp_name="qwen2.5-7b-rloo-baseline-bs512x16-update${num_updates_per_batch}"
-    val_n=64
+    val_n=32
 else
     max_prompt_length=$((1024 * 2))
     max_response_length=$((1024 * 2))

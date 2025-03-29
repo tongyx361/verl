@@ -38,7 +38,7 @@ if [ "${TEST}" != "1" ]; then
     max_response_length=$((1024 * 14))
     train_batch_size=1024
     n_trajs_per_prompt=64
-    val_n=64
+    val_n=32
 else
     max_prompt_length=$((1024 * 2))
     max_response_length=$((1024 * 2))

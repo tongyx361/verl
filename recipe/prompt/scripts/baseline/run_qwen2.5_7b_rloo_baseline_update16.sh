@@ -39,7 +39,7 @@ if [ "${TEST}" != "1" ]; then
     ppo_mini_batch_size=64
     num_updates_per_batch=16
     exp_name="qwen2.5-7b-rloo-baseline-update${num_updates_per_batch}"
-    val_n=64
+    val_n=32
 else
     max_prompt_length=$((1024 * 2))
     max_response_length=$((1024 * 2))
