@@ -92,10 +92,10 @@ class Tracking(object):
             self.console_logger = LocalLogger(print_to_console=True)
             self.logger['console'] = self.console_logger
 
-    def log(self, data, step, backend=None):
+    def log(self, data, step=None, backend=None):
         for default_backend, logger_instance in self.logger.items():
             if backend is None or default_backend in backend:
-                if isinstance(data, str) and default_backend != 'console':
+                if (isinstance(data, str) or step is None) and default_backend != 'console':
                     continue
                 logger_instance.log(data=data, step=step)
 

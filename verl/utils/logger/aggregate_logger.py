@@ -16,11 +16,11 @@ A Ray logger will receive logging info from different processes.
 """
 import logging
 import numbers
-from typing import Dict
+from typing import Any, Optional
 
 
-def concat_dict_to_str(dict: Dict, step):
-    output = [f'step:{step}']
+def concat_dict_to_str(dict: dict, step: Optional[int] = None):
+    output = [f'step:{step}'] if step is not None else []
     for k, v in dict.items():
         if isinstance(v, numbers.Number):
             output.append(f'{k}:{v:.3f}')
@@ -45,9 +45,10 @@ class LocalLogger:
                 datefmt="%Y-%m-%d %H:%M:%S",
             )
 
-    def log(self, data, step):
+    def log(self, data: Any, step: Optional[int] = None):
         if self.print_to_console:
             if isinstance(data, dict):
                 self.logger.info(concat_dict_to_str(data, step=step))
             else:
-                self.logger.info(f"[{step=}] {data}")
+                step_pfx = f"[{step=}] " if step is not None else ""
+                self.logger.info(f"{step_pfx}{data}")
