@@ -35,7 +35,7 @@ else
     max_prompt_length=$((1024 * 2))
     max_response_length=$((1024 * 2))
     num_bon=2
-    train_batch_size=$((NNODES * 8 / num_bon))
+    train_batch_size=$((NNODES * 8)) # Prompt batch dispatched to generation DP ranks
     num_updates_per_batch=1
     exp_name="qwen2.5-7b-rloo-baseline-bs512x2-update${num_updates_per_batch}-test"
 fi
