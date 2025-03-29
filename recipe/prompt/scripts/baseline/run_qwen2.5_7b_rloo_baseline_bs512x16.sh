@@ -127,7 +127,6 @@ ray job submit --no-wait --runtime-env="${RUNTIME_ENV}" \
     actor_rollout_ref.rollout.val_kwargs.top_p=${top_p} \
     actor_rollout_ref.rollout.val_kwargs.n=64 \
     actor_rollout_ref.rollout.val_kwargs.do_sample=True \
-    custom_reward_function.name="compute_score" \
     trainer.logger=['console','wandb'] \
     trainer.project_name=${project_name} \
     trainer.experiment_name=${exp_name} \
