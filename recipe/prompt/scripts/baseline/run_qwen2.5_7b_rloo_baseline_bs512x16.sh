@@ -24,7 +24,7 @@ WORKING_DIR=${WORKING_DIR:-"${PWD}"}
 RUNTIME_ENV=${RUNTIME_ENV:-"${WORKING_DIR}/verl/trainer/runtime_env.yaml"}
 NNODES=${NNODES:-4}
 
-sp_size=8
+sp_size=4 # sp_size=8 gets 7B stuck
 n_procs_per_node=8
 num_procs=$((NNODES * n_procs_per_node))
 train_dp_size=$((num_procs / sp_size))

@@ -2,7 +2,7 @@
 set -euxo pipefail
 
 project_name='rl-prompt'
-exp_name='qwen2.5-3b-rloo-baseline-ctx2-14k'
+exp_name='qwen2.5-7b-rloo-baseline-ctx2-14k'
 
 adv_estimator=rloo
 clip_ratio_low=0.2
@@ -25,7 +25,7 @@ WORKING_DIR=${WORKING_DIR:-"${PWD}"}
 RUNTIME_ENV=${RUNTIME_ENV:-"${WORKING_DIR}/verl/trainer/runtime_env.yaml"}
 NNODES=${NNODES:-4}
 
-sp_size=8
+sp_size=4 # sp_size=8 gets 7B stuck
 n_procs_per_node=8
 num_procs=$((NNODES * n_procs_per_node))
 train_dp_size=$((num_procs / sp_size))
@@ -35,7 +35,7 @@ gen_dp_size=$((num_procs / gen_tp))
 
 if [ "${TEST}" != "1" ]; then
     max_prompt_length=$((1024 * 2))
-    max_response_length=$((1024 * 30))
+    max_response_length=$((1024 * 14))
     train_batch_size=1024
     n_trajs_per_prompt=64
     val_n=32
@@ -53,7 +53,7 @@ fi
 
 # Paths
 RAY_DATA_HOME=${RAY_DATA_HOME:-"${HOME}/verl"}
-MODEL_PATH=${MODEL_PATH:-"${RAY_DATA_HOME}/models/Qwen2.5-3B"}
+MODEL_PATH=${MODEL_PATH:-"${RAY_DATA_HOME}/models/Qwen2.5-7B"}
 CKPTS_DIR=${CKPTS_DIR:-"${RAY_DATA_HOME}/ckpts/${project_name}/${exp_name}"}
 TRAIN_FILE=${TRAIN_FILE:-"${RAY_DATA_HOME}/data/dapo-math-unique-17k.parquet"}
 TEST_FILE=${TEST_FILE:-"${RAY_DATA_HOME}/data/aime-2024.parquet"}
