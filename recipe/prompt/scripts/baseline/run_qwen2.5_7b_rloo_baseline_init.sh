@@ -73,7 +73,7 @@ offload=False
 
 use_dynamic_bsz=True
 actor_ppo_max_token_len=$((512 * num_procs))
-infer_ppo_max_token_len=$((512 * num_procs))
+infer_ppo_max_token_len=$((2048 * num_procs))
 
 ray job submit --no-wait --runtime-env="${RUNTIME_ENV}" \
     --working-dir "${WORKING_DIR}" \
@@ -86,7 +86,7 @@ ray job submit --no-wait --runtime-env="${RUNTIME_ENV}" \
     data.max_response_length=${max_response_length} \
     data.train_batch_size=${train_batch_size} \
     data.truncation='left' \
-    critic.ppo_epochs=${ppo_epochs} \
+    actor_rollout_ref.actor.ppo_epochs=${ppo_epochs} \
     actor_rollout_ref.rollout.n=${n_trajs_per_prompt} \
     actor_rollout_ref.actor.kl_loss_coef=${kl_loss_coef} \
     actor_rollout_ref.actor.clip_ratio_low=${clip_ratio_low} \
