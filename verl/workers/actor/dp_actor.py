@@ -256,7 +256,7 @@ class DataParallelPPOActor(BasePPOActor):
 
         metrics = {}
         for epoch in range(self.config.ppo_epochs):
-            for batch_idx, mini_batch in enumerate(dataloader):
+            for mini_idx, mini_batch in enumerate(dataloader):
                 # split batch into micro_batches
                 if has_multi_modal_inputs:
                     self.gradient_accumulation = self.config.ppo_mini_batch_size // self.config.ppo_micro_batch_size_per_gpu
@@ -326,7 +326,7 @@ class DataParallelPPOActor(BasePPOActor):
                         # relative to the dynamic bsz
                         # NOTE: Compatible with token-mean loss
                         num_valid_toks = response_mask.sum()
-                        mini_batch_loss_token_num = mini_batch_loss_token_nums[batch_idx]
+                        mini_batch_loss_token_num = mini_batch_loss_token_nums[mini_idx]
                         loss = policy_loss * num_valid_toks / mini_batch_loss_token_num
                     else:
                         loss = policy_loss / self.gradient_accumulation

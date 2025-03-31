@@ -189,7 +189,7 @@ class DataParallelPPOCritic(BasePPOCritic):
             dataloader = batch.split(self.config.ppo_mini_batch_size)
 
         for epoch in range(self.config.ppo_epochs):
-            for batch_idx, mini_batch in enumerate(dataloader):
+            for mini_idx, mini_batch in enumerate(dataloader):
                 # split batch into micro_batches
                 if has_multi_modal_inputs:
                     num_micro_batches = mini_batch.batch.batch_size[0] // self.config.ppo_micro_batch_size_per_gpu
@@ -234,7 +234,7 @@ class DataParallelPPOCritic(BasePPOCritic):
                         # relative to the dynamic bsz
                         # NOTE: Compatible with token-mean loss
                         num_valid_toks = eos_mask.sum()
-                        mini_batch_loss_token_num = mini_batch_loss_token_nums[batch_idx]
+                        mini_batch_loss_token_num = mini_batch_loss_token_nums[mini_idx]
                         loss = vf_loss * num_valid_toks / mini_batch_loss_token_num
                     else:
                         loss = vf_loss / self.gradient_accumulation
