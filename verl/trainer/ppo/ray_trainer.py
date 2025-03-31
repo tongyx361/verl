@@ -502,7 +502,6 @@ class RayPPOTrainer(object):
         # Lists to collect samples for the table
         sample_inputs = []
         sample_outputs = []
-        sample_scores = []
 
         for test_data in self.val_dataloader:
             test_batch = DataProto.from_single_dict(test_data)
@@ -560,7 +559,7 @@ class RayPPOTrainer(object):
             accs = reward_result['accs']
 
             all_accs.extend(accs)
-            data_source_lst.extend(test_batch.non_tensor_batch.get('data_source', ['unknown'] * len(accs)))
+            data_source_lst.append(test_batch.non_tensor_batch.get('data_source', ['unknown'] * len(accs)))
 
         self._maybe_log_val_generations(inputs=sample_inputs, outputs=sample_outputs, scores=all_accs)
 
