@@ -39,12 +39,11 @@ def get_repetition_penalty(ngram_size: int, max_penalty: float, resp_text: str) 
     return scaling * max_penalty
 
 
-def zipngram(text: str, ngram_size: int):
+def zipngram_tokens(tokens: list[int], ngram_size: int):
     """
     c.f. https://stackoverflow.com/questions/21883108/fast-optimize-n-gram-implementations-in-python
     """
-    words = text.lower().split()
-    return zip(*[words[i:] for i in range(ngram_size)])
+    return zip(*[tokens[i:] for i in range(ngram_size)])
 
 
 class NaiveRewardManager:
@@ -121,6 +120,27 @@ class NaiveRewardManager:
                     cosine = math.cos(progress * math.pi)
                     cos_len_scaling_reward = min_value + 0.5 * (max_value - min_value) * (1.0 + cosine)
                     final_reward = cos_len_scaling_reward
+
+            rep_cfg = self.config.reward_model.repetition
+            if rep_cfg.enabled:
+                resp_tok_ids = response_ids[:int(valid_response_length)]
+                repeated = []
+                ngrams = set()
+                for start_idx, ng in enumerate(zipngram_tokens(resp_tok_ids, rep_cfg.ngram_size)):
+                    if ng in ngrams:
+                        repeated.append(start_idx)
+                    ngrams.add(ng)
+
+                tok_rewards = torch.zeros(response_ids.shape[-1], dtype=torch.float32)
+                curr_end_idx = -1
+                for start_idx in repeated:
+                    if not rep_cfg.only_start or start_idx > curr_end_idx:
+                        for i in range(start_idx, start_idx + rep_cfg.ngram_size):
+                            tok_rewards[i] = rep_cfg.reward
+
+                    curr_end_idx = start_idx + rep_cfg.ngram_size
+
+                reward_tensor[i] += tok_rewards
 
             reward_tensor[i, valid_response_length - 1] = final_reward
 

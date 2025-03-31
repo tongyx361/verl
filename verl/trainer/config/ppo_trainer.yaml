@@ -180,7 +180,8 @@ reward_model:
   repetition:
     enabled: False
     ngram_size: 0
-    max_penalty: 0.0
+    reward: 0.0
+    only_start: False
 
 custom_reward_function:
   path: null
