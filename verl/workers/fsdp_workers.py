@@ -615,7 +615,7 @@ class ActorRolloutRefWorker(Worker):
 
 class CriticWorker(Worker):
 
-    def __init__(self, config, n_trajs_per_prompt):
+    def __init__(self, config):
         super().__init__()
         import torch.distributed
         if not torch.distributed.is_initialized():
