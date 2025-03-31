@@ -14,7 +14,7 @@ n_procs_per_node=8
 num_procs=$((NNODES * n_procs_per_node))
 
 project_name='demystify-long-cot'
-exp_name="qwen2.5-32b-dlc-cosine-reward-${num_procs}gpus"
+exp_name="qwen2.5-32b-dlc-cosine-reward-dense-rep-pen-${num_procs}gpus"
 
 enable_cosine_length_scaling_reward=True
 correct_cosine_max_reward=2.0
