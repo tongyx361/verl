@@ -46,6 +46,7 @@ if [ "${TEST}" != "1" ]; then
     num_updates_per_batch=16
     train_batch_size=$((ppo_mini_batch_size * num_updates_per_batch))
     val_n=16
+    resume_mode=auto
 else
     max_prompt_length=$((1024 * 2))
     max_response_length=$((1024 * 2))
@@ -58,6 +59,7 @@ else
     fi
     exp_name="${exp_name}-test"
     val_n=1
+    resume_mode=disable
 fi
 
 # Paths
@@ -183,5 +185,5 @@ ray job submit --no-wait --runtime-env="${RUNTIME_ENV}" \
     trainer.test_freq=${test_freq} \
     trainer.total_epochs=${total_epochs} \
     trainer.default_local_dir="${CKPTS_DIR}" \
-    trainer.resume_mode=auto \
+    trainer.resume_mode=${resume_mode} \
     data.return_raw_chat=True
