@@ -307,8 +307,10 @@ class RayPPOTrainer(object):
 
         # 1. Check total batch size for data correctness
         real_train_batch_size = config.data.train_batch_size * config.actor_rollout_ref.rollout.n
-        assert real_train_batch_size % n_gpus == 0, \
-            f"real_train_batch_size ({real_train_batch_size}) must be divisible by total n_gpus ({n_gpus})."
+        actor_sp_size = config.actor_rollout_ref.actor.ulysses_sequence_parallel_size
+        actor_dp_size = n_gpus // actor_sp_size
+        assert real_train_batch_size % actor_dp_size == 0, \
+            f"{real_train_batch_size=} must be divisible by total {actor_dp_size=}."
 
         # A helper function to check "micro_batch_size" vs "micro_batch_size_per_gpu"
         # We throw an error if the user sets both. The new convention is "..._micro_batch_size_per_gpu".
