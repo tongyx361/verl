@@ -108,6 +108,7 @@ actor_rollout_ref:
 
 critic:
   strategy: fsdp
+  rollout_n: ${actor_rollout_ref.rollout.n}
   optim:
     lr: 1e-6
     lr_warmup_steps: -1 # Prioritized. Negative values mean delegating to lr_warmup_steps_ratio.

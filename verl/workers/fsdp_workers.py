@@ -615,7 +615,7 @@ class ActorRolloutRefWorker(Worker):
 
 class CriticWorker(Worker):
 
-    def __init__(self, config):
+    def __init__(self, config, n_trajs_per_prompt):
         super().__init__()
         import torch.distributed
         if not torch.distributed.is_initialized():
@@ -644,6 +644,7 @@ class CriticWorker(Worker):
         self._is_offload_optimizer = self.config.model.fsdp_config.optimizer_offload
 
         # normalize config
+        self.config.ppo_mini_batch_size *= self.config.rollout_n
         self.config.ppo_mini_batch_size //= (torch.distributed.get_world_size() // self.ulysses_sequence_parallel_size)
         if self.config.ppo_micro_batch_size is not None:
             self.config.ppo_micro_batch_size //= (torch.distributed.get_world_size() //
