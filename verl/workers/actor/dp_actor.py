@@ -332,16 +332,16 @@ class DataParallelPPOActor(BasePPOActor):
                         loss = policy_loss / self.gradient_accumulation
                     loss.backward()
 
-                    data = {
+                    metric_data = {
                         'actor/entropy_loss': entropy_loss.detach().item(),
                         'actor/pg_loss': pg_loss.detach().item(),
                         'actor/pg_clipfrac': pg_clipfrac.detach().item(),
                         'actor/ppo_kl': ppo_kl.detach().item(),
                     }
-                    append_to_dict(metrics, data)
+                    append_to_dict(metrics, metric_data)
 
                 grad_norm = self._optimizer_step()
-                data = {'actor/grad_norm': grad_norm.detach().item()}
-            append_to_dict(metrics, data)
+                metric_data = {'actor/grad_norm': grad_norm.detach().item()}
+                append_to_dict(metrics, metric_data)
         self.actor_optimizer.zero_grad()
         return metrics
