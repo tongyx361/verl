@@ -35,7 +35,7 @@ n_procs_per_node=8
 num_procs=$((NNODES * n_procs_per_node))
 train_dp_size=$((num_procs / sp_size))
 fsdp_size=-1
-gen_tp=8
+gen_tp=4 # # of attention heads = 28
 gen_dp_size=$((num_procs / gen_tp))
 
 if [ "${TEST}" != "1" ]; then
@@ -51,12 +51,12 @@ else
     max_prompt_length=$((1024 * 2))
     max_response_length=$((1024 * 2))
     n_trajs_per_prompt=2
-    train_batch_size=$((train_dp_size / n_trajs_per_prompt))
+    ppo_mini_batch_size=$((train_dp_size / n_trajs_per_prompt))
+    num_updates_per_batch=2
+    train_batch_size=$((ppo_mini_batch_size * num_updates_per_batch))
     if [ $train_batch_size -lt $gen_dp_size ]; then
         train_batch_size=$gen_dp_size
     fi
-    num_updates_per_batch=2
-    ppo_mini_batch_size=$((train_batch_size / num_updates_per_batch))
     exp_name="qwen2.5-32b-dlc-classic-reward-test"
     val_n=1
 fi

@@ -45,12 +45,12 @@ else
     max_prompt_length=$((1024 * 2))
     max_response_length=$((1024 * 2))
     n_trajs_per_prompt=2
-    train_batch_size=$((train_dp_size / n_trajs_per_prompt))
+    ppo_mini_batch_size=$((train_dp_size / n_trajs_per_prompt))
+    num_updates_per_batch=2
+    train_batch_size=$((ppo_mini_batch_size * num_updates_per_batch))
     if [ $train_batch_size -lt $gen_dp_size ]; then
         train_batch_size=$gen_dp_size
     fi
-    num_updates_per_batch=2
-    ppo_mini_batch_size=$((train_batch_size / num_updates_per_batch))
     exp_name="qwen2.5-7b-rloo-baseline-update${num_updates_per_batch}-test"
     val_n=1
 fi
