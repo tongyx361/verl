@@ -15,7 +15,7 @@
 from verl import DataProto
 from verl.utils.reward_score import _default_compute_score
 import torch
-from OmegaConf import DictConfig
+from omegaconf import DictConfig
 import math
 
 
