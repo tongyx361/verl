@@ -171,12 +171,16 @@ reward_model:
   cosine_length_scaling:
     enabled: False
     correct_reward:
-      min: null
-      max: null
+      min: 0.0
+      max: 0.0
     wrong_reward:
-      min: null
-      max: null
-  exceeding_reward: null
+      min: 0.0
+      max: 0.0
+  exceeding_reward: 0.0
+  repetition:
+    enabled: False
+    ngram_size: 0
+    max_penalty: 0.0
 
 custom_reward_function:
   path: null

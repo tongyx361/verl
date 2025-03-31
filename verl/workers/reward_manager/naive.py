@@ -19,16 +19,45 @@ from omegaconf import DictConfig
 import math
 
 
+def get_repetition_penalty(ngram_size: int, max_penalty: float, resp_text: str) -> float:
+    """
+    c.f. https://github.com/eddycmu/demystify-long-cot/blob/7cec7017d52444798b39496efa8759aaeafdd125/openrlhf/openrlhf/reward/repetition.py#L56-L70
+    """
+    if max_penalty > 0:
+        raise ValueError(f"max_penalty {max_penalty} should not be positive")
+
+    if max_penalty == 0:
+        return 0
+
+    ngrams = set()
+    total = 0
+    for ng in zipngram(resp_text, ngram_size):
+        ngrams.add(ng)
+        total += 1
+
+    scaling = 1 - len(ngrams) / total
+    return scaling * max_penalty
+
+
+def zipngram(text: str, ngram_size: int):
+    """
+    c.f. https://stackoverflow.com/questions/21883108/fast-optimize-n-gram-implementations-in-python
+    """
+    words = text.lower().split()
+    return zip(*[words[i:] for i in range(ngram_size)])
+
+
 class NaiveRewardManager:
     """The reward manager.
     """
 
-    def __init__(self, tokenizer, num_examine, compute_score=None) -> None:
+    def __init__(self, tokenizer, num_examine, compute_score=None, config: DictConfig) -> None:
         self.tokenizer = tokenizer
         self.num_examine = num_examine  # the number of batches of decoded responses to print to the console
         self.compute_score = compute_score or _default_compute_score
+        self.config = config
 
-    def __call__(self, data: DataProto, config: DictConfig):
+    def __call__(self, data: DataProto):
         """We will expand this function gradually based on the available datasets"""
 
         # If there is rm score, we directly return rm score. Otherwise, we compute via rm_score_fn
@@ -63,8 +92,8 @@ class NaiveRewardManager:
 
             extra_info = data_item.non_tensor_batch.get('extra_info', None)
 
-            max_resp_len = config.data.max_response_length
-            exceed_reward = config.reward_model.exceeding_reward
+            max_resp_len = self.config.data.max_response_length
+            exceed_reward = self.config.reward_model.exceeding_reward
             if exceed_reward is not None and valid_response_length >= max_resp_len:
                 final_reward = exceed_reward
             else:
@@ -75,11 +104,11 @@ class NaiveRewardManager:
                     extra_info=extra_info,
                 )
 
-                cos_len_scaling_reward_cfg = config.reward_model.cosine_length_scaling
+                cos_len_scaling_reward_cfg = self.config.reward_model.cosine_length_scaling
                 if not cos_len_scaling_reward_cfg.enabled:
                     final_reward = score
                 else:
-                    if score == config.reward_model.correct_score:
+                    if score == self.config.reward_model.correct_score:
                         min_value = cos_len_scaling_reward_cfg.correct_reward.min
                         max_value = cos_len_scaling_reward_cfg.correct_reward.max
                     else:
