@@ -35,7 +35,7 @@ n_procs_per_node=8
 num_procs=$((NNODES * n_procs_per_node))
 train_dp_size=$((num_procs / sp_size))
 fsdp_size=-1
-gen_tp=4 # # of attention heads = 28
+gen_tp=8
 gen_dp_size=$((num_procs / gen_tp))
 
 if [ "${TEST}" != "1" ]; then
