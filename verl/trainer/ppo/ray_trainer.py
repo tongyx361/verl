@@ -26,6 +26,7 @@ from copy import deepcopy
 import random
 from collections import defaultdict
 from tqdm import tqdm
+from collections import defaultdict
 
 import ray
 import numpy as np
@@ -175,7 +176,7 @@ def compute_response_mask(data: DataProto):
     return attention_mask[:, -response_length:]
 
 
-def compute_advantage(data: DataProto, adv_estimator, gamma=1.0, lam=1.0, num_repeat=1):
+def compute_advantage(data: DataProto, adv_estimator, gamma=1.0, lam=1.0, num_repeat=1, rep_gamma=1.0):
     # Back-compatible with trainers that do not compute response mask in fit
     if "response_mask" not in data.batch.keys():
         data.batch['response_mask'] = compute_response_mask(data)
@@ -184,9 +185,11 @@ def compute_advantage(data: DataProto, adv_estimator, gamma=1.0, lam=1.0, num_re
     if adv_estimator == AdvantageEstimator.GAE:
         advantages, returns = core_algos.compute_gae_advantage_return(
             token_level_rewards=data.batch['token_level_rewards'],
+            token_level_rep_rewards=data.batch['token_level_rep_rewards'],
             values=data.batch['values'],
             eos_mask=data.batch['response_mask'],
             gamma=gamma,
+            rep_gamma=rep_gamma,
             lam=lam)
         data.batch['advantages'] = advantages
         data.batch['returns'] = returns
@@ -493,7 +496,7 @@ class RayPPOTrainer(object):
         self.validation_generations_logger.log(self.config.trainer.logger, samples, self.global_steps)
 
     def _validate(self):
-        reward_tensor_lst = []
+        all_accs = []
         data_source_lst = []
 
         # Lists to collect samples for the table
@@ -553,31 +556,25 @@ class RayPPOTrainer(object):
             test_batch = test_batch.union(test_output_gen_batch)
 
             # evaluate using reward_function
-            reward_tensor = self.val_reward_fn(test_batch)
+            reward_result = self.val_reward_fn(test_batch)
+            accs = reward_result['accs']
 
-            # Store scores
-            scores = reward_tensor.sum(-1).cpu().tolist()
-            sample_scores.extend(scores)
+            all_accs.extend(accs)
+            data_source_lst.extend(test_batch.non_tensor_batch.get('data_source', ['unknown'] * len(accs)))
 
-            reward_tensor_lst.append(reward_tensor)
-            data_source_lst.append(test_batch.non_tensor_batch.get('data_source', ['unknown'] * reward_tensor.shape[0]))
+        self._maybe_log_val_generations(inputs=sample_inputs, outputs=sample_outputs, scores=all_accs)
 
-        self._maybe_log_val_generations(inputs=sample_inputs, outputs=sample_outputs, scores=sample_scores)
-
-        reward_tensor = torch.cat(reward_tensor_lst, dim=0).sum(-1).cpu()  # (batch_size,)
         data_sources = np.concatenate(data_source_lst, axis=0)
 
         # evaluate test_score based on data source
-        data_source_reward = {}
-        for i in range(reward_tensor.shape[0]):
+        data_src2accs = defaultdict(list)
+        for i, acc in enumerate(all_accs):
             data_source = data_sources[i]
-            if data_source not in data_source_reward:
-                data_source_reward[data_source] = []
-            data_source_reward[data_source].append(reward_tensor[i].item())
+            data_src2accs[data_source].append(acc)
 
         metric_dict = {}
-        for data_source, rewards in data_source_reward.items():
-            metric_dict[f'val/test_score/{data_source}'] = np.mean(rewards)
+        for data_src, accs in data_src2accs.items():
+            metric_dict[f'val/acc/{data_src}'] = np.mean(accs)
 
         return metric_dict
 
@@ -976,8 +973,9 @@ class RayPPOTrainer(object):
                             batch = batch.union(reward_tensor)
 
                         # we combine with rule-based rm
-                        reward_tensor = self.reward_fn(batch)
-                        batch.batch['token_level_scores'] = reward_tensor
+                        reward_result = self.reward_fn(batch)
+                        batch.batch['token_level_scores'] = reward_result['reward_tensor']
+                        batch.batch['token_level_rep_rewards'] = reward_result['rep_reward_tensor']
 
                         # compute rewards. apply_kl_penalty if available
                         if not self.config.actor_rollout_ref.actor.get('use_kl_loss', False):
@@ -991,6 +989,7 @@ class RayPPOTrainer(object):
                         # compute advantages, executed on the driver process
                         batch = compute_advantage(batch,
                                                   adv_estimator=self.config.algorithm.adv_estimator,
+                                                  rep_gamma=self.config.reward_model.repetition.gamma,
                                                   gamma=self.config.algorithm.gamma,
                                                   lam=self.config.algorithm.lam,
                                                   num_repeat=self.config.actor_rollout_ref.rollout.n)

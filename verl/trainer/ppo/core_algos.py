@@ -67,44 +67,61 @@ def get_kl_controller(config):
     return kl_ctrl
 
 
-def compute_gae_advantage_return(token_level_rewards: torch.Tensor, values: torch.Tensor, eos_mask: torch.Tensor,
-                                 gamma: torch.Tensor, lam: torch.Tensor):
-    """Adapted from https://github.com/huggingface/trl/blob/main/trl/trainer/ppo_trainer.py
+def compute_gae_advantage_return(token_level_rewards: torch.Tensor, token_level_rep_rewards: torch.Tensor,
+                                 values: torch.Tensor, eos_mask: torch.Tensor, gamma: torch.Tensor,
+                                 rep_gamma: torch.Tensor, lam: torch.Tensor):
+    """Compute GAE advantages and returns considering both token-level rewards and repetition rewards.
 
     Args:
         token_level_rewards: `(torch.Tensor)`
-            shape: (bs, response_length)
+            shape: (bs, response_length) - Main token-level rewards
+        token_level_rep_rewards: `(torch.Tensor)`
+            shape: (bs, response_length) - Repetition penalties/rewards
         values: `(torch.Tensor)`
             shape: (bs, response_length)
         eos_mask: `(torch.Tensor)`
             shape: (bs, response_length). [EOS] mask. The token after [EOS] have mask zero.
         gamma: `(float)`
-            discounted factor used in RL
+            discount factor for main rewards
+        rep_gamma: `(float)`
+            discount factor for repetition rewards
         lam: `(float)`
             lambda value when computing Generalized Advantage Estimation (https://arxiv.org/abs/1506.02438)
 
     Returns:
         advantages: `(torch.Tensor)`
             shape: (bs, response_length)
-        Returns: `(torch.Tensor)`
+        returns: `(torch.Tensor)`
             shape: (bs, response_length)
-
     """
     with torch.no_grad():
-        lastgaelam = 0
-        advantages_reversed = []
-        gen_len = token_level_rewards.shape[-1]
+        # Reshape rewards to have 3 dimensions: [batch_size, sequence_length, reward_types]
+        mul_rewards = torch.stack([token_level_rewards, token_level_rep_rewards], dim=-1)
+        mul_gamma = torch.tensor([gamma, rep_gamma], device=mul_rewards.device)
 
-        for t in reversed(range(gen_len)):
-            nextvalues = values[:, t + 1] if t < gen_len - 1 else 0.0
-            delta = token_level_rewards[:, t] + gamma * nextvalues - values[:, t]
-            lastgaelam = delta + gamma * lam * lastgaelam
-            advantages_reversed.append(lastgaelam)
-        advantages = torch.stack(advantages_reversed[::-1], dim=1)
+        response_length = mul_rewards.shape[1]
+        returns_reversed = []
+        next_returns = torch.zeros(mul_rewards.shape[0],
+                                   len(mul_gamma),
+                                   dtype=mul_rewards.dtype,
+                                   device=mul_rewards.device)
 
-        returns = advantages + values
+        for t in reversed(range(response_length)):
+            step_returns = torch.zeros(mul_rewards.shape[0],
+                                       len(mul_gamma),
+                                       dtype=mul_rewards.dtype,
+                                       device=mul_rewards.device)
+            for i, g in enumerate(mul_gamma):
+                step_returns[:, i] = mul_rewards[:, t, i] + g * next_returns[:, i]
+
+            returns_reversed.append(step_returns.sum(dim=-1))
+            next_returns = step_returns
+
+        returns = torch.stack(returns_reversed[::-1], dim=1)
+        advantages = returns - values
         advantages = verl_F.masked_whiten(advantages, eos_mask)
-    return advantages, returns
+
+    return advantages.detach(), returns
 
 
 # NOTE(sgm): this implementation only consider outcome supervision, where the reward is a scalar.

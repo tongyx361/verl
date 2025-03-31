@@ -182,6 +182,7 @@ reward_model:
     ngram_size: 0
     reward: 0.0
     only_start: False
+    gamma: 1.0
 
 custom_reward_function:
   path: null

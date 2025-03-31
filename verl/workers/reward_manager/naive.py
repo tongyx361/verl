@@ -64,6 +64,8 @@ class NaiveRewardManager:
             return data.batch['rm_scores']
 
         reward_tensor = torch.zeros_like(data.batch['responses'], dtype=torch.float32)
+        rep_reward_tensor = torch.zeros_like(data.batch['responses'], dtype=torch.float32)
+        accs: list[float] = []
 
         already_print_data_sources = {}
 
@@ -102,12 +104,14 @@ class NaiveRewardManager:
                     ground_truth=ground_truth,
                     extra_info=extra_info,
                 )
+                acc = score == self.config.reward_model.correct_score
+                accs.append(acc)
 
                 cos_len_scaling_reward_cfg = self.config.reward_model.cosine_length_scaling
                 if not cos_len_scaling_reward_cfg.enabled:
                     final_reward = score
                 else:
-                    if score == self.config.reward_model.correct_score:
+                    if acc:
                         min_value = cos_len_scaling_reward_cfg.correct_reward.min
                         max_value = cos_len_scaling_reward_cfg.correct_reward.max
                     else:
@@ -120,6 +124,8 @@ class NaiveRewardManager:
                     cosine = math.cos(progress * math.pi)
                     cos_len_scaling_reward = min_value + 0.5 * (max_value - min_value) * (1.0 + cosine)
                     final_reward = cos_len_scaling_reward
+
+            reward_tensor[i, valid_response_length - 1] = final_reward
 
             rep_cfg = self.config.reward_model.repetition
             if rep_cfg.enabled:
@@ -140,9 +146,7 @@ class NaiveRewardManager:
 
                     curr_end_idx = start_idx + rep_cfg.ngram_size
 
-                reward_tensor[i] += tok_rewards
-
-            reward_tensor[i, valid_response_length - 1] = final_reward
+                rep_reward_tensor[i] += tok_rewards
 
             if data_source not in already_print_data_sources:
                 already_print_data_sources[data_source] = 0
@@ -153,5 +157,10 @@ class NaiveRewardManager:
                 print("[response]", response_str)
                 print("[ground_truth]", ground_truth)
                 print("[score]", score)
+                print("[rep_reward]", rep_reward_tensor[i].sum().item())
 
-        return reward_tensor
+        return {
+            "reward_tensor": reward_tensor,
+            "rep_reward_tensor": rep_reward_tensor,
+            "accs": accs,
+        }
