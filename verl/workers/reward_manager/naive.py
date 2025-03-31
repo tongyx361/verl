@@ -15,6 +15,8 @@
 from verl import DataProto
 from verl.utils.reward_score import _default_compute_score
 import torch
+from OmegaConf import DictConfig
+import math
 
 
 class NaiveRewardManager:
@@ -26,7 +28,7 @@ class NaiveRewardManager:
         self.num_examine = num_examine  # the number of batches of decoded responses to print to the console
         self.compute_score = compute_score or _default_compute_score
 
-    def __call__(self, data: DataProto):
+    def __call__(self, data: DataProto, config: DictConfig):
         """We will expand this function gradually based on the available datasets"""
 
         # If there is rm score, we directly return rm score. Otherwise, we compute via rm_score_fn
@@ -61,13 +63,37 @@ class NaiveRewardManager:
 
             extra_info = data_item.non_tensor_batch.get('extra_info', None)
 
-            score = self.compute_score(
-                data_source=data_source,
-                solution_str=response_str,
-                ground_truth=ground_truth,
-                extra_info=extra_info,
-            )
-            reward_tensor[i, valid_response_length - 1] = score
+            max_resp_len = config.data.max_response_length
+            exceed_reward = config.reward_model.exceeding_reward
+            if exceed_reward is not None and valid_response_length >= max_resp_len:
+                final_reward = exceed_reward
+            else:
+                score = self.compute_score(
+                    data_source=data_source,
+                    solution_str=response_str,
+                    ground_truth=ground_truth,
+                    extra_info=extra_info,
+                )
+
+                cos_len_scaling_reward_cfg = config.reward_model.cosine_length_scaling
+                if not cos_len_scaling_reward_cfg.enabled:
+                    final_reward = score
+                else:
+                    if score == config.reward_model.correct_score:
+                        min_value = cos_len_scaling_reward_cfg.correct_reward.min
+                        max_value = cos_len_scaling_reward_cfg.correct_reward.max
+                    else:
+                        # Yes, they are swapped. This is required for the cosine formula below
+                        # to work with negative numbers.
+                        min_value = cos_len_scaling_reward_cfg.wrong_reward.min
+                        max_value = cos_len_scaling_reward_cfg.wrong_reward.max
+
+                    progress = valid_response_length / max_resp_len
+                    cosine = math.cos(progress * math.pi)
+                    cos_len_scaling_reward = min_value + 0.5 * (max_value - min_value) * (1.0 + cosine)
+                    final_reward = cos_len_scaling_reward
+
+            reward_tensor[i, valid_response_length - 1] = final_reward
 
             if data_source not in already_print_data_sources:
                 already_print_data_sources[data_source] = 0

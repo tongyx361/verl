@@ -167,6 +167,16 @@ reward_model:
   use_dynamic_bsz: ${critic.use_dynamic_bsz}
   forward_max_token_len_per_gpu: ${critic.forward_max_token_len_per_gpu}
   reward_manager: naive
+  correct_score: 1.0
+  cosine_length_scaling:
+    enabled: False
+    correct_reward:
+      min: null
+      max: null
+    wrong_reward:
+      min: null
+      max: null
+  exceeding_reward: null
 
 custom_reward_function:
   path: null
