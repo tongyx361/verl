@@ -27,7 +27,7 @@ NNODES=${NNODES:-4}
 sp_size=4 # sp_size=8 gets 7B stuck
 n_procs_per_node=8
 num_procs=$((NNODES * n_procs_per_node))
-train_dp_size=$((num_procs / sp_size))
+
 fsdp_size=-1
 gen_tp=1
 gen_dp_size=$((num_procs / gen_tp))
