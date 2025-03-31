@@ -1,8 +1,20 @@
 #!/usr/bin/env bash
 set -euxo pipefail
 
+# Config
+TEST=${TEST:-"0"}
+# Ray
+RAY_ADDRESS=${RAY_ADDRESS:-"http://localhost:8265"}
+WORKING_DIR=${WORKING_DIR:-"${PWD}"}
+RUNTIME_ENV=${RUNTIME_ENV:-"${WORKING_DIR}/verl/trainer/runtime_env.yaml"}
+NNODES=${NNODES:-4}
+
+sp_size=8
+n_procs_per_node=8
+num_procs=$((NNODES * n_procs_per_node))
+
 project_name='demystify-long-cot'
-exp_name='qwen2.5-32b-dlc-classic-reward'
+exp_name="qwen2.5-32b-dlc-classic-reward-${num_procs}gpus"
 
 adv_estimator=gae
 gae_lambda=1.0
