@@ -45,7 +45,6 @@ if [ "${TEST}" != "1" ]; then
     ppo_mini_batch_size=32
     num_updates_per_batch=16
     train_batch_size=$((ppo_mini_batch_size * num_updates_per_batch))
-    exp_name="qwen2.5-32b-dlc-classic-reward"
     val_n=16
 else
     max_prompt_length=$((1024 * 2))
@@ -57,7 +56,7 @@ else
     if [ $train_batch_size -lt $gen_dp_size ]; then
         train_batch_size=$gen_dp_size
     fi
-    exp_name="qwen2.5-32b-dlc-classic-reward-test"
+    exp_name="${exp_name}-test"
     val_n=1
 fi
 
@@ -72,7 +71,7 @@ TEST_FILE=${TEST_FILE:-"${RAY_DATA_HOME}/data/aime-2024.parquet"}
 shuffle=True
 mini_batch_mode=random
 ppo_epochs=1
-total_epochs=100
+total_epochs=5
 
 actor_lr=5e-7
 critic_lr=1e-6
@@ -84,6 +83,7 @@ test_freq=5
 save_freq=5
 
 offload=False
+gradient_checkpointing=True
 
 use_dynamic_bsz=True
 actor_ppo_max_token_len=$((512 * num_procs))
@@ -119,7 +119,7 @@ ray job submit --no-wait --runtime-env="${RUNTIME_ENV}" \
     +actor_rollout_ref.model.override_config.attention_dropout=0. \
     +actor_rollout_ref.model.override_config.embd_pdrop=0. \
     +actor_rollout_ref.model.override_config.resid_pdrop=0. \
-    actor_rollout_ref.model.enable_gradient_checkpointing=True \
+    actor_rollout_ref.model.enable_gradient_checkpointing=${gradient_checkpointing} \
     actor_rollout_ref.actor.optim.lr=${actor_lr} \
     actor_rollout_ref.actor.optim.lr_warmup_steps_ratio=${lr_warmup_steps_ratio} \
     actor_rollout_ref.actor.optim.warmup_style=${lr_scheduler} \
@@ -156,11 +156,12 @@ ray job submit --no-wait --runtime-env="${RUNTIME_ENV}" \
     +critic.model.override_config.attention_dropout=0. \
     +critic.model.override_config.embd_pdrop=0. \
     +critic.model.override_config.resid_pdrop=0. \
-    critic.model.enable_gradient_checkpointing=True \
+    critic.model.enable_gradient_checkpointing=${gradient_checkpointing} \
     critic.model.use_remove_padding=True \
     critic.model.fsdp_config.param_offload=${offload} \
     critic.model.fsdp_config.optimizer_offload=${offload} \
     critic.model.fsdp_config.fsdp_size=${fsdp_size} \
+    critic.ppo_mini_batch_size=${ppo_mini_batch_size} \
     critic.ppo_max_token_len_per_gpu=${actor_ppo_max_token_len} \
     critic.forward_max_token_len_per_gpu=${infer_ppo_max_token_len} \
     critic.ulysses_sequence_parallel_size=${sp_size} \
