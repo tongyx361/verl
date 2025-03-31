@@ -38,6 +38,7 @@ if [ "${TEST}" != "1" ]; then
     n_trajs_per_prompt=64
     ppo_mini_batch_size=64
     num_updates_per_batch=16
+    train_batch_size=$((ppo_mini_batch_size * num_updates_per_batch))
     exp_name="qwen2.5-7b-rloo-baseline-update${num_updates_per_batch}"
     val_n=32
 else
@@ -48,7 +49,8 @@ else
     if [ $train_batch_size -lt $gen_dp_size ]; then
         train_batch_size=$gen_dp_size
     fi
-    num_updates_per_batch=16
+    num_updates_per_batch=2
+    ppo_mini_batch_size=$((train_batch_size / num_updates_per_batch))
     exp_name="qwen2.5-7b-rloo-baseline-update${num_updates_per_batch}-test"
     val_n=1
 fi
@@ -60,7 +62,7 @@ CKPTS_DIR=${CKPTS_DIR:-"${RAY_DATA_HOME}/ckpts/${project_name}/${exp_name}"}
 TRAIN_FILE=${TRAIN_FILE:-"${RAY_DATA_HOME}/data/dapo-math-unique-17k.parquet"}
 TEST_FILE=${TEST_FILE:-"${RAY_DATA_HOME}/data/aime-2024.parquet"}
 
-train_batch_size=$((ppo_mini_batch_size * num_updates_per_batch))
+
 mini_batch_mode=random
 ppo_epochs=1
 total_epochs=100

@@ -42,8 +42,9 @@ if [ "${TEST}" != "1" ]; then
     max_prompt_length=$((1024 * 2))
     max_response_length=$((1024 * 14))
     n_trajs_per_prompt=16
-    ppo_mini_batch_size=512
+    ppo_mini_batch_size=32
     num_updates_per_batch=16
+    train_batch_size=$((ppo_mini_batch_size * num_updates_per_batch))
     exp_name="qwen2.5-32b-dlc-classic-reward"
     val_n=16
 else
@@ -55,6 +56,7 @@ else
         train_batch_size=$gen_dp_size
     fi
     num_updates_per_batch=2
+    ppo_mini_batch_size=$((train_batch_size / num_updates_per_batch))
     exp_name="qwen2.5-32b-dlc-classic-reward-test"
     val_n=1
 fi
@@ -67,7 +69,6 @@ TRAIN_FILE=${TRAIN_FILE:-"${RAY_DATA_HOME}/data/math/train.parquet"}
 TEST_FILE=${TEST_FILE:-"${RAY_DATA_HOME}/data/aime-2024.parquet"}
 
 shuffle=True
-train_batch_size=$((ppo_mini_batch_size * num_updates_per_batch))
 mini_batch_mode=random
 ppo_epochs=1
 total_epochs=100
