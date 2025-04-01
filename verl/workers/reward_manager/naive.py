@@ -49,6 +49,97 @@ def zipngram_tokens(tokens: list[int], ngram_size: int):
     return zip(*[tokens[i:] for i in range(ngram_size)])
 
 
+def process_single_item(args):
+    """Standalone processing function that can be pickled"""
+    i, item_data, tokenizer, compute_score, config = args
+
+    prompt_ids = item_data['batch']['prompts']
+    prompt_length = prompt_ids.shape[-1]
+    attention_mask = item_data['batch']['attention_mask']
+
+    valid_prompt_length = attention_mask[:prompt_length].sum()
+    valid_prompt_ids = prompt_ids[-valid_prompt_length:]
+
+    response_ids = item_data['batch']['responses']
+    valid_response_length = attention_mask[prompt_length:].sum()
+    valid_response_ids = response_ids[:valid_response_length]
+
+    # decode
+    prompt_str = tokenizer.decode(valid_prompt_ids, skip_special_tokens=True)
+    response_str = tokenizer.decode(valid_response_ids, skip_special_tokens=True)
+
+    ground_truth = item_data['non_tensor_batch']['reward_model']['ground_truth']
+    data_source = item_data['non_tensor_batch']['data_source']
+    extra_info = item_data['non_tensor_batch'].get('extra_info', None)
+
+    max_resp_len = config.data.max_response_length
+    exceed_reward = config.reward_model.exceeding_reward
+
+    if exceed_reward is not None and valid_response_length >= max_resp_len:
+        final_reward = exceed_reward
+        acc = None
+        score = None
+    else:
+        score = compute_score(
+            data_source=data_source,
+            solution_str=response_str,
+            ground_truth=ground_truth,
+            extra_info=extra_info,
+        )
+        acc = score == config.reward_model.correct_score
+
+        cos_len_scaling_reward_cfg = config.reward_model.cosine_length_scaling
+        if not cos_len_scaling_reward_cfg.enabled:
+            final_reward = score
+        else:
+            if acc:
+                min_value = cos_len_scaling_reward_cfg.correct_reward.min
+                max_value = cos_len_scaling_reward_cfg.correct_reward.max
+            else:
+                min_value = cos_len_scaling_reward_cfg.wrong_reward.min
+                max_value = cos_len_scaling_reward_cfg.wrong_reward.max
+
+            progress = valid_response_length / max_resp_len
+            cosine = math.cos(progress * math.pi)
+            final_reward = min_value + 0.5 * (max_value - min_value) * (1.0 + cosine)
+
+    # Calculate repetition penalty if enabled
+    rep_rewards = None
+    if config.reward_model.repetition.enabled:
+        rep_cfg = config.reward_model.repetition
+        resp_tok_ids = response_ids[:int(valid_response_length)]
+        repeated = []
+        ngrams = set()
+        for start_idx, ng in enumerate(zipngram_tokens(resp_tok_ids, rep_cfg.ngram_size)):
+            if ng in ngrams:
+                repeated.append(start_idx)
+            ngrams.add(ng)
+
+        tok_rewards = torch.zeros(response_ids.shape[-1], dtype=torch.float32)
+        curr_end_idx = -1
+        for start_idx in repeated:
+            if not rep_cfg.only_start or start_idx > curr_end_idx:
+                for j in range(start_idx, start_idx + rep_cfg.ngram_size):
+                    tok_rewards[j] = rep_cfg.reward
+            curr_end_idx = start_idx + rep_cfg.ngram_size
+        rep_rewards = tok_rewards
+
+    return {
+        'index': i,
+        'final_reward': final_reward,
+        'valid_response_length': valid_response_length,
+        'acc': acc,
+        'rep_rewards': rep_rewards,
+        'debug_info': {
+            'prompt': prompt_str,
+            'response': response_str,
+            'ground_truth': ground_truth,
+            'score': score,
+            'data_source': data_source
+        }
+    }
+
+
 class NaiveRewardManager:
     """The reward manager.
     """
@@ -65,90 +156,7 @@ class NaiveRewardManager:
         self.num_examine = num_examine  # the number of batches of decoded responses to print to the console
         self.compute_score = compute_score or _default_compute_score
         self.config = config
-        self.pool = mp.Pool(processes=num_processes)  # Create process pool during initialization
-
-    def process_single_item(self, i, data_item, max_resp_len, exceed_reward):
-        """Process a single data item and return its rewards"""
-        prompt_ids = data_item.batch['prompts']
-        prompt_length = prompt_ids.shape[-1]
-
-        valid_prompt_length = data_item.batch['attention_mask'][:prompt_length].sum()
-        valid_prompt_ids = prompt_ids[-valid_prompt_length:]
-
-        response_ids = data_item.batch['responses']
-        valid_response_length = data_item.batch['attention_mask'][prompt_length:].sum()
-        valid_response_ids = response_ids[:valid_response_length]
-
-        # decode
-        prompt_str = self.tokenizer.decode(valid_prompt_ids, skip_special_tokens=True)
-        response_str = self.tokenizer.decode(valid_response_ids, skip_special_tokens=True)
-
-        ground_truth = data_item.non_tensor_batch['reward_model']['ground_truth']
-        data_source = data_item.non_tensor_batch['data_source']
-        extra_info = data_item.non_tensor_batch.get('extra_info', None)
-
-        if exceed_reward is not None and valid_response_length >= max_resp_len:
-            final_reward = exceed_reward
-            acc = None
-        else:
-            score = self.compute_score(
-                data_source=data_source,
-                solution_str=response_str,
-                ground_truth=ground_truth,
-                extra_info=extra_info,
-            )
-            acc = score == self.config.reward_model.correct_score
-
-            cos_len_scaling_reward_cfg = self.config.reward_model.cosine_length_scaling
-            if not cos_len_scaling_reward_cfg.enabled:
-                final_reward = score
-            else:
-                if acc:
-                    min_value = cos_len_scaling_reward_cfg.correct_reward.min
-                    max_value = cos_len_scaling_reward_cfg.correct_reward.max
-                else:
-                    min_value = cos_len_scaling_reward_cfg.wrong_reward.min
-                    max_value = cos_len_scaling_reward_cfg.wrong_reward.max
-
-                progress = valid_response_length / max_resp_len
-                cosine = math.cos(progress * math.pi)
-                final_reward = min_value + 0.5 * (max_value - min_value) * (1.0 + cosine)
-
-        # Calculate repetition penalty if enabled
-        rep_rewards = None
-        if self.config.reward_model.repetition.enabled:
-            rep_cfg = self.config.reward_model.repetition
-            resp_tok_ids = response_ids[:int(valid_response_length)]
-            repeated = []
-            ngrams = set()
-            for start_idx, ng in enumerate(zipngram_tokens(resp_tok_ids, rep_cfg.ngram_size)):
-                if ng in ngrams:
-                    repeated.append(start_idx)
-                ngrams.add(ng)
-
-            tok_rewards = torch.zeros(response_ids.shape[-1], dtype=torch.float32)
-            curr_end_idx = -1
-            for start_idx in repeated:
-                if not rep_cfg.only_start or start_idx > curr_end_idx:
-                    for j in range(start_idx, start_idx + rep_cfg.ngram_size):
-                        tok_rewards[j] = rep_cfg.reward
-                curr_end_idx = start_idx + rep_cfg.ngram_size
-            rep_rewards = tok_rewards
-
-        return {
-            'index': i,
-            'final_reward': final_reward,
-            'valid_response_length': valid_response_length,
-            'acc': acc,
-            'rep_rewards': rep_rewards,
-            'debug_info': {
-                'prompt': prompt_str,
-                'response': response_str,
-                'ground_truth': ground_truth,
-                'score': score if 'score' in locals() else None,
-                'data_source': data_source
-            }
-        }
+        self.num_processes = num_processes
 
     def __call__(self, data: DataProto):
         """We will expand this function gradually based on the available datasets"""
@@ -161,13 +169,20 @@ class NaiveRewardManager:
         rep_reward_tensor = torch.zeros_like(data.batch['responses'], dtype=torch.float32)
         accs: list[float] = []
 
-        # Prepare parameters for parallel processing
-        max_resp_len = self.config.data.max_response_length
-        exceed_reward = self.config.reward_model.exceeding_reward
+        # Create process pool here instead of during initialization
+        with mp.Pool(processes=self.num_processes) as pool:
+            # Prepare data for parallel processing
+            process_args = [(i, {
+                'batch': {
+                    k: v[i].cpu().numpy() if isinstance(v, torch.Tensor) else v[i] for k, v in data.batch.items()
+                },
+                'non_tensor_batch': {
+                    k: v[i] if isinstance(v, dict) else v[i].cpu().numpy() for k, v in data.non_tensor_batch.items()
+                }
+            }, self.tokenizer, self.compute_score, self.config) for i in range(len(data))]
 
-        # Process items in parallel
-        process_fn = partial(self.process_single_item, max_resp_len=max_resp_len, exceed_reward=exceed_reward)
-        results = self.pool.starmap(process_fn, [(i, data[i]) for i in range(len(data))])
+            # Process items in parallel
+            results = pool.map(process_single_item, process_args)
 
         # Collect results
         already_print_data_sources = {}
@@ -200,8 +215,3 @@ class NaiveRewardManager:
             "rep_reward_tensor": rep_reward_tensor,
             "accs": accs,
         }
-
-    def __del__(self):
-        if hasattr(self, 'pool'):
-            self.pool.close()
-            self.pool.join()
