@@ -108,7 +108,6 @@ def process_single_item(args):
     return {
         'index': i,
         'final_reward': final_reward,
-        'valid_response_length': valid_response_length,
         'acc': acc,
         'rep_rewards': rep_rewards,
         'debug_info': {
@@ -146,7 +145,7 @@ class NaiveRewardManager:
             num_examine,
             compute_score=None,
             config: DictConfig = None,
-            timeout: int = 300,
+            timeout: int = 5,
             chunk_size: int = 32,  # Renamed to better reflect its purpose
     ) -> None:
         self.tokenizer = tokenizer
@@ -201,23 +200,34 @@ class NaiveRewardManager:
         # Collect results in chunks to avoid overwhelming the system
         for i in range(0, len(futures), self.chunk_size):
             chunk_futures = futures[i:i + self.chunk_size]
-            try:
-                # Get results for this chunk in parallel
-                chunk_results = ray.get(chunk_futures, timeout=self.timeout)
-                # Filter out None results and extend
-                results.extend([r for r in chunk_results if r is not None])
-            except TimeoutError:
-                print(f"Processing timed out for chunk starting at index {i}")
-            except Exception as error:
-                print(f"Error processing chunk: {error}")
+            for future in chunk_futures:
+                try:
+                    # Get result for each future individually with timeout
+                    result = ray.get(future, timeout=self.timeout)
+                    if result is not None:
+                        results.append(result)
+                    else:
+                        # Judge as failed
+                        results.append({
+                            'index': i,
+                            'final_reward': 0,
+                            'acc': 0,
+                            'rep_rewards': None,
+                        })
+                except TimeoutError:
+                    print(f"Processing timed out for future at index {i}")
+                except Exception as error:
+                    print(f"Error processing future: {error}")
 
         print(f"Finished parallel processing with {len(results)=}")
 
+        valid_resp_lens = data.batch["attention_mask"].sum(dim=-1)
         # Process results
         already_print_data_sources = {}
         for result in results:
             i = result['index']
-            reward_tensor[i, result['valid_response_length'] - 1] = result['final_reward']
+            valid_resp_len = valid_resp_lens[i]
+            reward_tensor[i, valid_resp_len - 1] = result['final_reward']
 
             if result['acc'] is not None:
                 accs.append(result['acc'])
