@@ -17,6 +17,7 @@ from verl.utils.reward_score import _default_compute_score
 import torch
 from omegaconf import DictConfig
 import math
+import time
 
 
 def zipngram_tokens(tokens: list[int], ngram_size: int):
@@ -78,12 +79,14 @@ class NaiveRewardManager:
             if exceed_reward is not None and valid_response_length >= max_resp_len:
                 final_reward = exceed_reward
             else:
+                score_start = time.time()
                 score = self.compute_score(
                     data_source=data_source,
                     solution_str=response_str,
                     ground_truth=ground_truth,
                     extra_info=extra_info,
                 )
+                print(f"{i=}: score time: {time.time() - score_start}")
                 acc = score == self.config.reward_model.correct_score
                 accs.append(acc)
 
@@ -107,6 +110,7 @@ class NaiveRewardManager:
 
             reward_tensor[i, valid_response_length - 1] = final_reward
 
+            rep_start = time.time()
             rep_cfg = self.config.reward_model.repetition
             if rep_cfg.enabled:
                 resp_tok_ids = response_ids[:int(valid_response_length)]
@@ -127,6 +131,7 @@ class NaiveRewardManager:
                     curr_end_idx = start_idx + rep_cfg.ngram_size
 
                 rep_reward_tensor[i] += tok_rewards
+            print(f"{i=}: rep time: {time.time() - rep_start}")
 
             if data_source not in already_print_data_sources:
                 already_print_data_sources[data_source] = 0
