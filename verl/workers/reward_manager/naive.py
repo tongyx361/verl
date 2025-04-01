@@ -30,6 +30,7 @@ def zipngram_tokens(tokens: list[int], ngram_size: int):
     return zip(*[tokens[i:] for i in range(ngram_size)])
 
 
+@ray.remote
 def process_single_item(args):
     """Standalone processing function that can be pickled"""
     i, batch_row, non_tensor_batch_row, tokenizer, compute_score, config = args
@@ -128,31 +129,22 @@ def process_single_item(args):
     }
 
 
-@ray.remote
-def process_single_item_ray(args):
-    """Ray-compatible version of process_single_item"""
-    i, batch_row, non_tensor_batch_row, tokenizer, compute_score, config = args
-    return process_single_item((i, batch_row, non_tensor_batch_row, tokenizer, compute_score, config))
-
-
 class NaiveRewardManager:
     """The reward manager.
     """
 
     def __init__(
-            self,
-            tokenizer,
-            num_examine,
-            compute_score=None,
-            config: DictConfig = None,
-            num_processes: int = int(os.cpu_count() * 0.8),
-            timeout: int = 300,
+        self,
+        tokenizer,
+        num_examine,
+        compute_score=None,
+        config: DictConfig = None,
+        timeout: int = 300,
     ) -> None:
         self.tokenizer = tokenizer
         self.num_examine = num_examine  # the number of batches of decoded responses to print to the console
         self.compute_score = compute_score or _default_compute_score
         self.config = config
-        self.num_processes = num_processes
         self.timeout = timeout
 
     def __call__(self, data: DataProto):
@@ -196,7 +188,7 @@ class NaiveRewardManager:
         print("Starting parallel processing with Ray")
         futures = []
         for args in process_args:
-            future = process_single_item_ray.remote(args)
+            future = process_single_item.remote(args)
             futures.append(future)
 
         # Collect results with timeout
