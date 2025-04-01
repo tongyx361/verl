@@ -18,8 +18,7 @@ import torch
 from omegaconf import DictConfig
 import math
 import ray
-from concurrent.futures import TimeoutError
-import os
+from ray.util.multiprocessing import Pool
 
 
 def zipngram_tokens(tokens: list[int], ngram_size: int):
@@ -32,7 +31,9 @@ def zipngram_tokens(tokens: list[int], ngram_size: int):
 @ray.remote
 def process_single_item(args):
     """Standalone processing function that can be pickled"""
-    i, batch_row, non_tensor_batch_row, tokenizer, compute_score, config = args
+    i, data_item, tokenizer, compute_score, config = args
+    batch_row = data_item.batch
+    non_tensor_batch_row = data_item.non_tensor_batch
 
     prompt_ids = batch_row['prompts']
     prompt_length = prompt_ids.shape[-1]
@@ -46,7 +47,6 @@ def process_single_item(args):
     valid_response_ids = response_ids[:valid_response_length]
 
     # decode
-    prompt_str = tokenizer.decode(valid_prompt_ids, skip_special_tokens=True)
     response_str = tokenizer.decode(valid_response_ids, skip_special_tokens=True)
 
     ground_truth = non_tensor_batch_row['reward_model']['ground_truth']
@@ -129,27 +129,25 @@ def process_batch(args_batch):
 
 
 class NaiveRewardManager:
-    """The reward manager.
+    """The reward manager using Ray's multiprocessing Pool for parallelization.
     """
 
     def __init__(
-            self,
-            tokenizer,
-            num_examine,
-            compute_score=None,
-            config: DictConfig = None,
-            timeout: int = 5,
-            chunk_size: int = os.cpu_count(),  # Renamed to better reflect its purpose
+        self,
+        tokenizer,
+        num_examine,
+        compute_score=None,
+        config: DictConfig = None,
+        timeout: int = 300,
     ) -> None:
         self.tokenizer = tokenizer
         self.num_examine = num_examine
         self.compute_score = compute_score or _default_compute_score
         self.config = config
         self.timeout = timeout
-        self.chunk_size = chunk_size
 
     def __call__(self, data: DataProto):
-        """We will expand this function gradually based on the available datasets"""
+        """Process data using Ray's multiprocessing Pool for parallel execution"""
         print("Entering NaiveRewardManager")
         print(f"{len(data.batch)=}")
 
@@ -164,63 +162,26 @@ class NaiveRewardManager:
         print("Collecting process_args")
         process_args = []
         for i in range(len(data)):
-            batch_row = {}
-            for k, v in data.batch.items():
-                if isinstance(v, torch.Tensor):
-                    batch_row[k] = v[i].cpu()
-                else:
-                    batch_row[k] = v[i]
+            data_item = data[i].to('cpu')
 
-            non_tensor_batch_row = {}
-            for k, v in data.non_tensor_batch.items():
-                if isinstance(v, torch.Tensor):
-                    non_tensor_batch_row[k] = v[i].cpu()
-                elif isinstance(v, dict):
-                    non_tensor_batch_row[k] = v[i]
-                else:
-                    non_tensor_batch_row[k] = v[i] if hasattr(v, '__getitem__') else v
-
-            process_args.append((i, batch_row, non_tensor_batch_row, self.tokenizer, self.compute_score, self.config))
+            process_args.append((i, data_item, self.tokenizer, self.compute_score, self.config))
         print(f"Collected {len(process_args)=}.")
 
-        # Process items in parallel using Ray with chunked result collection
-        print("Starting parallel processing with Ray")
+        # Process items in parallel using Ray's multiprocessing Pool
+        print("Starting parallel processing with Ray Pool")
         results = []
 
-        # Process futures in batches
-        for i in range(0, len(process_args), self.chunk_size):
-            batch_args = process_args[i:i + self.chunk_size]
-            print(
-                f"Processing batch {i//self.chunk_size + 1} of {(len(process_args) + self.chunk_size - 1)//self.chunk_size}"
-            )
-
-            # Create futures for current batch
-            batch_futures = [process_single_item.remote(args) for args in batch_args]
-
-            # Process current batch all at once
-            try:
-                batch_results = ray.get(batch_futures, timeout=self.timeout)
-                for result in batch_results:
-                    if result is not None:
-                        results.append(result)
-                    else:
-                        # Judge as failed
-                        results.append({
-                            'index': i,
-                            'final_reward': 0,
-                            'acc': 0,
-                            'rep_rewards': None,
-                        })
-            except TimeoutError:
-                print(f"Processing timed out for batch at index {i}")
-            except Exception as error:
-                print(f"Error processing batch: {error}")
+        with Pool(ray_address="auto") as pool:
+            # Use map with a large timeout
+            results = pool.map(process_single_item, process_args, timeout=self.timeout)
 
         print(f"Finished parallel processing with {len(results)=}")
 
         valid_resp_lens = data.batch["attention_mask"].sum(dim=-1)
         # Process results
         for result in results:
+            if result is None:  # Handle any failed items
+                continue
             i = result['index']
             valid_resp_len = valid_resp_lens[i]
             reward_tensor[i, valid_resp_len - 1] = result['final_reward']
