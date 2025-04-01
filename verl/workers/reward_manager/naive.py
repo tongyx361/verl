@@ -38,8 +38,6 @@ def process_single_item(args):
     prompt_length = prompt_ids.shape[-1]
     attention_mask = batch_row['attention_mask']
 
-    valid_prompt_length = attention_mask[:prompt_length].sum()
-
     response_ids = batch_row['responses']
     valid_response_length = attention_mask[prompt_length:].sum()
     valid_response_ids = response_ids[:valid_response_length]
