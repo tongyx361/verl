@@ -17,8 +17,9 @@ from verl.utils.reward_score import _default_compute_score
 import torch
 from omegaconf import DictConfig
 import math
-import multiprocessing as mp
 import os
+from pebble import ProcessPool
+from concurrent.futures import TimeoutError
 
 
 def zipngram_tokens(tokens: list[int], ngram_size: int):
@@ -130,16 +131,19 @@ class NaiveRewardManager:
             compute_score=None,
             config: DictConfig = None,
             num_processes: int = int(os.cpu_count() * 0.8),
+            timeout: int = 300,
     ) -> None:
         self.tokenizer = tokenizer
         self.num_examine = num_examine  # the number of batches of decoded responses to print to the console
         self.compute_score = compute_score or _default_compute_score
         self.config = config
         self.num_processes = num_processes
+        self.timeout = timeout
 
     def __call__(self, data: DataProto):
         """We will expand this function gradually based on the available datasets"""
-
+        print("Entering NaiveRewardManager")
+        print(f"{len(data.batch)=}")
         # If there is rm score, we directly return rm score. Otherwise, we compute via rm_score_fn
         if 'rm_scores' in data.batch.keys():
             return data.batch['rm_scores']
@@ -148,33 +152,49 @@ class NaiveRewardManager:
         rep_reward_tensor = torch.zeros_like(data.batch['responses'], dtype=torch.float32)
         accs: list[float] = []
 
-        with mp.Pool(processes=self.num_processes) as pool:
-            # Prepare data for parallel processing - only pass the needed row
-            process_args = []
-            for i in range(len(data)):
-                # Extract and convert tensor batch row
-                batch_row = {}
-                for k, v in data.batch.items():
-                    if isinstance(v, torch.Tensor):
-                        batch_row[k] = v[i].cpu()
-                    else:
-                        batch_row[k] = v[i]
+        # Prepare data for parallel processing - only pass the needed row
+        print("Collecting process_args")
+        process_args = []
+        for i in range(len(data)):
+            # Extract and convert tensor batch row
+            batch_row = {}
+            for k, v in data.batch.items():
+                if isinstance(v, torch.Tensor):
+                    batch_row[k] = v[i].cpu()
+                else:
+                    batch_row[k] = v[i]
 
-                # Extract and convert non-tensor batch row
-                non_tensor_batch_row = {}
-                for k, v in data.non_tensor_batch.items():
-                    if isinstance(v, torch.Tensor):
-                        non_tensor_batch_row[k] = v[i].cpu()
-                    elif isinstance(v, dict):
-                        non_tensor_batch_row[k] = v[i]
-                    else:
-                        non_tensor_batch_row[k] = v[i] if hasattr(v, '__getitem__') else v
+            # Extract and convert non-tensor batch row
+            non_tensor_batch_row = {}
+            for k, v in data.non_tensor_batch.items():
+                if isinstance(v, torch.Tensor):
+                    non_tensor_batch_row[k] = v[i].cpu()
+                elif isinstance(v, dict):
+                    non_tensor_batch_row[k] = v[i]
+                else:
+                    non_tensor_batch_row[k] = v[i] if hasattr(v, '__getitem__') else v
 
-                process_args.append(
-                    (i, batch_row, non_tensor_batch_row, self.tokenizer, self.compute_score, self.config))
+            process_args.append((i, batch_row, non_tensor_batch_row, self.tokenizer, self.compute_score, self.config))
+        print(f"Collected {len(process_args)=}. Entering parallel processing")
 
-            # Process items in parallel
-            results = pool.map(process_single_item, process_args)
+        # Process items in parallel using pebble
+        results = []
+        with ProcessPool(max_workers=self.num_processes) as pool:
+            iterator = pool.imap(process_single_item, process_args, timeout=self.timeout)  # 5 minute timeout per item
+            while True:
+                try:
+                    result = next(iterator)
+                    results.append(result)
+                except StopIteration:
+                    break
+                except TimeoutError:
+                    print("Processing timed out for an item")
+                    continue
+                except Exception as error:
+                    print(f"Error processing item: {error}")
+                    continue
+
+        print("Finished parallel processing")
 
         # Collect results
         already_print_data_sources = {}
@@ -202,6 +222,10 @@ class NaiveRewardManager:
                 print("[score]", debug['score'])
                 print("[rep_reward]", rep_reward_tensor[i].sum().item())
 
+        print("Finished NaiveRewardManager")
+        print(f"{reward_tensor.shape=}")
+        print(f"{rep_reward_tensor.shape=}")
+        print(f"Accuracy: {sum(accs) / len(accs)}")
         return {
             "reward_tensor": reward_tensor,
             "rep_reward_tensor": rep_reward_tensor,
