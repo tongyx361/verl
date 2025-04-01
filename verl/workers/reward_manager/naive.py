@@ -57,8 +57,8 @@ def process_single_item(args):
 
     if exceed_reward is not None and valid_response_length >= max_resp_len:
         final_reward = exceed_reward
-        acc = None
-        score = None
+        acc = 0
+        score = 0
     else:
         score = compute_score(
             data_source=data_source,
@@ -192,7 +192,7 @@ class NaiveRewardManager:
                 except Exception as error:
                     print(f"Error processing item {future_to_item[future]}: {error}")
 
-        print("Finished parallel processing")
+        print(f"Finished parallel processing with {len(results)=}")
 
         # Collect results
         already_print_data_sources = {}
