@@ -28,7 +28,6 @@ def zipngram_tokens(tokens: list[int], ngram_size: int):
     return zip(*[tokens[i:] for i in range(ngram_size)])
 
 
-@ray.remote
 def process_single_item(args):
     """Standalone processing function that can be pickled"""
     i, data_item, tokenizer, compute_score, config = args
@@ -40,7 +39,6 @@ def process_single_item(args):
     attention_mask = batch_row['attention_mask']
 
     valid_prompt_length = attention_mask[:prompt_length].sum()
-    valid_prompt_ids = prompt_ids[-valid_prompt_length:]
 
     response_ids = batch_row['responses']
     valid_response_length = attention_mask[prompt_length:].sum()
