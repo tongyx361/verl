@@ -158,7 +158,8 @@ class NaiveRewardManager:
         print("Collecting process_args")
         process_args = []
         for i in range(len(data)):
-            data_item = data[i].to('cpu')
+            data_item = data[i]
+            data_item.batch.to('cpu')
 
             process_args.append((i, data_item, self.tokenizer, self.compute_score, self.config))
         print(f"Collected {len(process_args)=}.")
