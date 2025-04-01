@@ -18,7 +18,7 @@ import torch
 from omegaconf import DictConfig
 import math
 import os
-from pebble import ProcessPool
+import ray
 from concurrent.futures import TimeoutError
 import time
 
@@ -128,6 +128,13 @@ def process_single_item(args):
     }
 
 
+@ray.remote
+def process_single_item_ray(args):
+    """Ray-compatible version of process_single_item"""
+    i, batch_row, non_tensor_batch_row, tokenizer, compute_score, config = args
+    return process_single_item((i, batch_row, non_tensor_batch_row, tokenizer, compute_score, config))
+
+
 class NaiveRewardManager:
     """The reward manager.
     """
@@ -185,23 +192,24 @@ class NaiveRewardManager:
             process_args.append((i, batch_row, non_tensor_batch_row, self.tokenizer, self.compute_score, self.config))
         print(f"Collected {len(process_args)=}.")
 
-        # Process items in parallel using pebble
-        results = []
-        print(f"Starting parallel processing with {self.num_processes=}")
-        with ProcessPool(max_workers=self.num_processes) as pool:
-            future_to_item = {
-                pool.schedule(process_single_item, args=(args,)): i for i, args in enumerate(process_args)
-            }
+        # Process items in parallel using Ray
+        print("Starting parallel processing with Ray")
+        futures = []
+        for args in process_args:
+            future = process_single_item_ray.remote(args)
+            futures.append(future)
 
-            for future in future_to_item:
-                try:
-                    result = future.result(timeout=self.timeout)
-                    if result is not None:  # Only append if we got a valid result
-                        results.append(result)
-                except TimeoutError:
-                    print(f"Processing timed out for item {future_to_item[future]}")
-                except Exception as error:
-                    print(f"Error processing item {future_to_item[future]}: {error}")
+        # Collect results with timeout
+        results = []
+        for future in futures:
+            try:
+                result = ray.get(future, timeout=self.timeout)
+                if result is not None:  # Only append if we got a valid result
+                    results.append(result)
+            except TimeoutError:
+                print(f"Processing timed out for item {future}")
+            except Exception as error:
+                print(f"Error processing item: {error}")
 
         print(f"Finished parallel processing with {len(results)=}")
 
