@@ -17,7 +17,6 @@ from verl.utils.reward_score import _default_compute_score
 import torch
 from omegaconf import DictConfig
 import math
-import os
 import ray
 from concurrent.futures import TimeoutError
 import time
@@ -61,17 +60,13 @@ def process_single_item(args):
         final_reward = exceed_reward
         acc = 0
         score = 0
-        compute_score_time = 0
     else:
-        compute_score_start = time.time()
         score = compute_score(
             data_source=data_source,
             solution_str=response_str,
             ground_truth=ground_truth,
             extra_info=extra_info,
         )
-        compute_score_time = time.time() - compute_score_start
-        print(f"Item {i} compute_score time: {compute_score_time:.4f}s")
         acc = score == config.reward_model.correct_score
 
         cos_len_scaling_reward_cfg = config.reward_model.cosine_length_scaling
@@ -92,7 +87,6 @@ def process_single_item(args):
     # Calculate repetition penalty if enabled
     rep_rewards = None
     if config.reward_model.repetition.enabled:
-        rep_penalty_start = time.time()
         rep_cfg = config.reward_model.repetition
         resp_tok_ids = response_ids[:int(valid_response_length)]
         repeated = []
@@ -110,8 +104,6 @@ def process_single_item(args):
                     tok_rewards[j] = rep_cfg.reward
             curr_end_idx = start_idx + rep_cfg.ngram_size
         rep_rewards = tok_rewards
-        rep_penalty_time = time.time() - rep_penalty_start
-        print(f"Item {i} rep_penalty time: {rep_penalty_time:.4f}s")
 
     return {
         'index': i,
@@ -186,10 +178,8 @@ class NaiveRewardManager:
 
         # Process items in parallel using Ray
         print("Starting parallel processing with Ray")
-        futures = []
-        for args in process_args:
-            future = process_single_item.remote(args)
-            futures.append(future)
+        # Use Ray's batch processing for better parallelization
+        futures = [process_single_item.remote(args) for args in process_args]
 
         # Collect results with timeout
         results = []
