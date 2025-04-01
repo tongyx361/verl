@@ -134,13 +134,11 @@ class NaiveRewardManager:
         num_examine,
         compute_score=None,
         config: DictConfig = None,
-        timeout: int = 300,
     ) -> None:
         self.tokenizer = tokenizer
         self.num_examine = num_examine
         self.compute_score = compute_score or _default_compute_score
         self.config = config
-        self.timeout = timeout
 
     def __call__(self, data: DataProto):
         """Process data using Ray's multiprocessing Pool for parallel execution"""
@@ -169,8 +167,8 @@ class NaiveRewardManager:
         results = []
 
         with Pool(ray_address="auto") as pool:
-            # Use map with a large timeout
-            results = pool.map(process_single_item, process_args, timeout=self.timeout)
+            # Use map without timeout parameter and handle timeouts at the Ray level
+            results = pool.map(process_single_item, process_args)
 
         print(f"Finished parallel processing with {len(results)=}")
 
