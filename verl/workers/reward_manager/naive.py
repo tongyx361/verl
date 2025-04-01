@@ -19,26 +19,6 @@ from omegaconf import DictConfig
 import math
 
 
-def get_repetition_penalty(ngram_size: int, max_penalty: float, resp_text: str) -> float:
-    """
-    c.f. https://github.com/eddycmu/demystify-long-cot/blob/7cec7017d52444798b39496efa8759aaeafdd125/openrlhf/openrlhf/reward/repetition.py#L56-L70
-    """
-    if max_penalty > 0:
-        raise ValueError(f"max_penalty {max_penalty} should not be positive")
-
-    if max_penalty == 0:
-        return 0
-
-    ngrams = set()
-    total = 0
-    for ng in zipngram(resp_text, ngram_size):
-        ngrams.add(ng)
-        total += 1
-
-    scaling = 1 - len(ngrams) / total
-    return scaling * max_penalty
-
-
 def zipngram_tokens(tokens: list[int], ngram_size: int):
     """
     c.f. https://stackoverflow.com/questions/21883108/fast-optimize-n-gram-implementations-in-python
