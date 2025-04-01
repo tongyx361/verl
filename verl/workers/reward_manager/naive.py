@@ -121,29 +121,46 @@ def process_single_item(args):
     }
 
 
+@ray.remote
+def process_batch(args_batch):
+    """Process a batch of items in parallel"""
+    results = []
+    for args in args_batch:
+        i, batch_row, non_tensor_batch_row, tokenizer, compute_score, config = args
+        try:
+            result = process_single_item((i, batch_row, non_tensor_batch_row, tokenizer, compute_score, config))
+            if result is not None:
+                results.append(result)
+        except Exception as error:
+            print(f"Error processing item {i}: {error}")
+    return results
+
+
 class NaiveRewardManager:
     """The reward manager.
     """
 
     def __init__(
-        self,
-        tokenizer,
-        num_examine,
-        compute_score=None,
-        config: DictConfig = None,
-        timeout: int = 300,
+            self,
+            tokenizer,
+            num_examine,
+            compute_score=None,
+            config: DictConfig = None,
+            timeout: int = 300,
+            chunk_size: int = 32,  # Renamed to better reflect its purpose
     ) -> None:
         self.tokenizer = tokenizer
-        self.num_examine = num_examine  # the number of batches of decoded responses to print to the console
+        self.num_examine = num_examine
         self.compute_score = compute_score or _default_compute_score
         self.config = config
         self.timeout = timeout
+        self.chunk_size = chunk_size
 
     def __call__(self, data: DataProto):
         """We will expand this function gradually based on the available datasets"""
         print("Entering NaiveRewardManager")
         print(f"{len(data.batch)=}")
-        # If there is rm score, we directly return rm score. Otherwise, we compute via rm_score_fn
+
         if 'rm_scores' in data.batch.keys():
             return data.batch['rm_scores']
 
@@ -151,11 +168,10 @@ class NaiveRewardManager:
         rep_reward_tensor = torch.zeros_like(data.batch['responses'], dtype=torch.float32)
         accs: list[float] = []
 
-        # Prepare data for parallel processing - only pass the needed row
+        # Prepare data for parallel processing
         print("Collecting process_args")
         process_args = []
         for i in range(len(data)):
-            # Extract and convert tensor batch row
             batch_row = {}
             for k, v in data.batch.items():
                 if isinstance(v, torch.Tensor):
@@ -163,7 +179,6 @@ class NaiveRewardManager:
                 else:
                     batch_row[k] = v[i]
 
-            # Extract and convert non-tensor batch row
             non_tensor_batch_row = {}
             for k, v in data.non_tensor_batch.items():
                 if isinstance(v, torch.Tensor):
@@ -176,26 +191,29 @@ class NaiveRewardManager:
             process_args.append((i, batch_row, non_tensor_batch_row, self.tokenizer, self.compute_score, self.config))
         print(f"Collected {len(process_args)=}.")
 
-        # Process items in parallel using Ray
+        # Process items in parallel using Ray with chunked result collection
         print("Starting parallel processing with Ray")
-        # Use Ray's batch processing for better parallelization
+        results = []
+
+        # Create all futures at once for true parallel processing
         futures = [process_single_item.remote(args) for args in process_args]
 
-        # Collect results with timeout
-        results = []
-        for future in futures:
+        # Collect results in chunks to avoid overwhelming the system
+        for i in range(0, len(futures), self.chunk_size):
+            chunk_futures = futures[i:i + self.chunk_size]
             try:
-                result = ray.get(future, timeout=self.timeout)
-                if result is not None:  # Only append if we got a valid result
-                    results.append(result)
+                # Get results for this chunk in parallel
+                chunk_results = ray.get(chunk_futures, timeout=self.timeout)
+                # Filter out None results and extend
+                results.extend([r for r in chunk_results if r is not None])
             except TimeoutError:
-                print(f"Processing timed out for item {future}")
+                print(f"Processing timed out for chunk starting at index {i}")
             except Exception as error:
-                print(f"Error processing item: {error}")
+                print(f"Error processing chunk: {error}")
 
         print(f"Finished parallel processing with {len(results)=}")
 
-        # Collect results
+        # Process results
         already_print_data_sources = {}
         for result in results:
             i = result['index']
