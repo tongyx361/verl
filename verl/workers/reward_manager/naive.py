@@ -19,7 +19,7 @@ from omegaconf import DictConfig
 import math
 import os
 from pebble import ProcessPool
-from concurrent.futures import TimeoutError
+from concurrent.futures import TimeoutError, ProcessPoolExecutor
 
 
 def zipngram_tokens(tokens: list[int], ngram_size: int):
@@ -180,19 +180,17 @@ class NaiveRewardManager:
         # Process items in parallel using pebble
         results = []
         with ProcessPool(max_workers=self.num_processes) as pool:
-            iterator = pool.imap(process_single_item, process_args, timeout=self.timeout)  # 5 minute timeout per item
-            while True:
+            future_to_item = {pool.schedule(process_single_item, args=args): i for i, args in enumerate(process_args)}
+
+            for future in future_to_item:
                 try:
-                    result = next(iterator)
-                    results.append(result)
-                except StopIteration:
-                    break
+                    result = future.result(timeout=self.timeout)
+                    if result is not None:  # Only append if we got a valid result
+                        results.append(result)
                 except TimeoutError:
-                    print("Processing timed out for an item")
-                    continue
+                    print(f"Processing timed out for item {future_to_item[future]}")
                 except Exception as error:
-                    print(f"Error processing item: {error}")
-                    continue
+                    print(f"Error processing item {future_to_item[future]}: {error}")
 
         print("Finished parallel processing")
 
