@@ -51,16 +51,16 @@ def zipngram_tokens(tokens: list[int], ngram_size: int):
 
 def process_single_item(args):
     """Standalone processing function that can be pickled"""
-    i, item_data, tokenizer, compute_score, config = args
+    i, batch_row, non_tensor_batch_row, tokenizer, compute_score, config = args
 
-    prompt_ids = item_data['batch']['prompts']
+    prompt_ids = batch_row['prompts']
     prompt_length = prompt_ids.shape[-1]
-    attention_mask = item_data['batch']['attention_mask']
+    attention_mask = batch_row['attention_mask']
 
     valid_prompt_length = attention_mask[:prompt_length].sum()
     valid_prompt_ids = prompt_ids[-valid_prompt_length:]
 
-    response_ids = item_data['batch']['responses']
+    response_ids = batch_row['responses']
     valid_response_length = attention_mask[prompt_length:].sum()
     valid_response_ids = response_ids[:valid_response_length]
 
@@ -68,9 +68,9 @@ def process_single_item(args):
     prompt_str = tokenizer.decode(valid_prompt_ids, skip_special_tokens=True)
     response_str = tokenizer.decode(valid_response_ids, skip_special_tokens=True)
 
-    ground_truth = item_data['non_tensor_batch']['reward_model']['ground_truth']
-    data_source = item_data['non_tensor_batch']['data_source']
-    extra_info = item_data['non_tensor_batch'].get('extra_info', None)
+    ground_truth = non_tensor_batch_row['reward_model']['ground_truth']
+    data_source = non_tensor_batch_row['data_source']
+    extra_info = non_tensor_batch_row.get('extra_info', None)
 
     max_resp_len = config.data.max_response_length
     exceed_reward = config.reward_model.exceeding_reward
@@ -169,17 +169,30 @@ class NaiveRewardManager:
         rep_reward_tensor = torch.zeros_like(data.batch['responses'], dtype=torch.float32)
         accs: list[float] = []
 
-        # Create process pool here instead of during initialization
         with mp.Pool(processes=self.num_processes) as pool:
-            # Prepare data for parallel processing
-            process_args = [(i, {
-                'batch': {
-                    k: v[i].cpu().numpy() if isinstance(v, torch.Tensor) else v[i] for k, v in data.batch.items()
-                },
-                'non_tensor_batch': {
-                    k: v[i] if isinstance(v, dict) else v[i].cpu().numpy() for k, v in data.non_tensor_batch.items()
-                }
-            }, self.tokenizer, self.compute_score, self.config) for i in range(len(data))]
+            # Prepare data for parallel processing - only pass the needed row
+            process_args = []
+            for i in range(len(data)):
+                # Extract and convert tensor batch row
+                batch_row = {}
+                for k, v in data.batch.items():
+                    if isinstance(v, torch.Tensor):
+                        batch_row[k] = v[i].cpu().numpy()
+                    else:
+                        batch_row[k] = v[i]
+
+                # Extract and convert non-tensor batch row
+                non_tensor_batch_row = {}
+                for k, v in data.non_tensor_batch.items():
+                    if isinstance(v, torch.Tensor):
+                        non_tensor_batch_row[k] = v[i].cpu().numpy()
+                    elif isinstance(v, dict):
+                        non_tensor_batch_row[k] = v[i]
+                    else:
+                        non_tensor_batch_row[k] = v[i] if hasattr(v, '__getitem__') else v
+
+                process_args.append(
+                    (i, batch_row, non_tensor_batch_row, self.tokenizer, self.compute_score, self.config))
 
             # Process items in parallel
             results = pool.map(process_single_item, process_args)
