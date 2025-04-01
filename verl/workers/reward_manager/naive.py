@@ -19,7 +19,7 @@ from omegaconf import DictConfig
 import math
 import ray
 from concurrent.futures import TimeoutError
-import time
+import os
 
 
 def zipngram_tokens(tokens: list[int], ngram_size: int):
@@ -110,13 +110,6 @@ def process_single_item(args):
         'final_reward': final_reward,
         'acc': acc,
         'rep_rewards': rep_rewards,
-        'debug_info': {
-            'prompt': prompt_str,
-            'response': response_str,
-            'ground_truth': ground_truth,
-            'score': score,
-            'data_source': data_source
-        }
     }
 
 
@@ -146,7 +139,7 @@ class NaiveRewardManager:
             compute_score=None,
             config: DictConfig = None,
             timeout: int = 5,
-            chunk_size: int = 32,  # Renamed to better reflect its purpose
+            chunk_size: int = os.cpu_count(),  # Renamed to better reflect its purpose
     ) -> None:
         self.tokenizer = tokenizer
         self.num_examine = num_examine
@@ -194,16 +187,20 @@ class NaiveRewardManager:
         print("Starting parallel processing with Ray")
         results = []
 
-        # Create all futures at once for true parallel processing
-        futures = [process_single_item.remote(args) for args in process_args]
+        # Process futures in batches
+        for i in range(0, len(process_args), self.chunk_size):
+            batch_args = process_args[i:i + self.chunk_size]
+            print(
+                f"Processing batch {i//self.chunk_size + 1} of {(len(process_args) + self.chunk_size - 1)//self.chunk_size}"
+            )
 
-        # Collect results in chunks to avoid overwhelming the system
-        for i in range(0, len(futures), self.chunk_size):
-            chunk_futures = futures[i:i + self.chunk_size]
-            for future in chunk_futures:
-                try:
-                    # Get result for each future individually with timeout
-                    result = ray.get(future, timeout=self.timeout)
+            # Create futures for current batch
+            batch_futures = [process_single_item.remote(args) for args in batch_args]
+
+            # Process current batch all at once
+            try:
+                batch_results = ray.get(batch_futures, timeout=self.timeout)
+                for result in batch_results:
                     if result is not None:
                         results.append(result)
                     else:
@@ -214,16 +211,15 @@ class NaiveRewardManager:
                             'acc': 0,
                             'rep_rewards': None,
                         })
-                except TimeoutError:
-                    print(f"Processing timed out for future at index {i}")
-                except Exception as error:
-                    print(f"Error processing future: {error}")
+            except TimeoutError:
+                print(f"Processing timed out for batch at index {i}")
+            except Exception as error:
+                print(f"Error processing batch: {error}")
 
         print(f"Finished parallel processing with {len(results)=}")
 
         valid_resp_lens = data.batch["attention_mask"].sum(dim=-1)
         # Process results
-        already_print_data_sources = {}
         for result in results:
             i = result['index']
             valid_resp_len = valid_resp_lens[i]
@@ -234,20 +230,6 @@ class NaiveRewardManager:
 
             if result['rep_rewards'] is not None:
                 rep_reward_tensor[i] += result['rep_rewards']
-
-            # Handle debug printing
-            debug = result['debug_info']
-            data_source = debug['data_source']
-            if data_source not in already_print_data_sources:
-                already_print_data_sources[data_source] = 0
-
-            if already_print_data_sources[data_source] < self.num_examine:
-                already_print_data_sources[data_source] += 1
-                print("[prompt]", debug['prompt'])
-                print("[response]", debug['response'])
-                print("[ground_truth]", debug['ground_truth'])
-                print("[score]", debug['score'])
-                print("[rep_reward]", rep_reward_tensor[i].sum().item())
 
         print("Finished NaiveRewardManager")
         print(f"{reward_tensor.shape=}")
