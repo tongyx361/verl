@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from omegaconf import ListConfig
+from omegaconf import ListConfig, DictConfig
 import os
 from typing import List, Union, Optional
 import copy
@@ -80,8 +80,8 @@ class RLHFDataset(Dataset):
     def __init__(self,
                  parquet_files: Union[str, List[str]],
                  tokenizer: PreTrainedTokenizer,
+                 prompt_config: DictConfig,
                  processor: Optional[ProcessorMixin] = None,
-                 prompt_key='prompt',
                  image_key='images',
                  max_prompt_length=1024,
                  filter_prompts=True,
@@ -99,7 +99,7 @@ class RLHFDataset(Dataset):
         self.tokenizer = tokenizer
         self.processor = processor
 
-        self.prompt_key = prompt_key
+        self.prompt_config = prompt_config
         self.image_key = image_key
         self.max_prompt_length = max_prompt_length
         self.filter_prompts = filter_prompts
@@ -134,7 +134,7 @@ class RLHFDataset(Dataset):
         # filter out too long prompts
         if self.filter_overlong_prompts:
             tokenizer = self.tokenizer
-            prompt_key = self.prompt_key
+            prompt_key = self.prompt_config.key
             self.dataframe = self.dataframe[self.dataframe.apply(lambda doc: len(
                 tokenizer.apply_chat_template(doc[prompt_key], add_generation_prompt=True)) <= self.max_prompt_length,
                                                                  axis=1)]
@@ -159,9 +159,35 @@ class RLHFDataset(Dataset):
         """
         row_dict: dict = self.dataframe.iloc[item].to_dict()
 
-        chat = row_dict.pop(self.prompt_key)
+        msg_lst = row_dict.pop(self.prompt_config.key)
 
-        prompt_with_chat_template = self.tokenizer.apply_chat_template(chat, add_generation_prompt=True, tokenize=False)
+        # System message
+        has_sys_msg = msg_lst[0]["role"] == "system"
+        sys_content = self.prompt_config.sys.content
+        if not has_sys_msg:
+            if sys_content is not None:
+                msg_lst = [{"role": "system", "content": sys_content}] + msg_lst
+        elif self.prompt_config.sys.override:
+            if sys_content is not None:
+                msg_lst[0]["content"] = sys_content
+            else:
+                msg_lst = msg_lst[1:]
+        # else keep it as is
+
+        # Last user message
+        last_user_msg = None
+        for msg in reversed(msg_lst):
+            if msg["role"] == "user":
+                last_user_msg = msg
+                break
+        assert last_user_msg is not None, f"No user message found in {msg_lst=}"
+
+        last_user_msg["content"] = self.prompt_config.last_user_msg.pfx + last_user_msg[
+            "content"] + self.prompt_config.last_user_msg.sfx
+
+        prompt_with_chat_template = self.tokenizer.apply_chat_template(msg_lst,
+                                                                       add_generation_prompt=True,
+                                                                       tokenize=False)
 
         is_multi_modal = self.image_key in row_dict
         if is_multi_modal:  # expand image token
@@ -214,7 +240,7 @@ class RLHFDataset(Dataset):
 
         # encode prompts without chat template
         if self.return_raw_chat:
-            row_dict['raw_prompt'] = chat.tolist()
+            row_dict['raw_prompt'] = msg_lst.tolist()
 
         # add index for each prompt
         index = row_dict.get("extra_info", {}).get("index", 0)

@@ -2,7 +2,18 @@ data:
   tokenizer: null
   train_files: ~/data/rlhf/gsm8k/train.parquet
   val_files: ~/data/rlhf/gsm8k/test.parquet
-  prompt_key: prompt
+  prompt_key: prompt # DEPRECATED: use `prompt.key` instead.
+  prompt:
+    key: ${data.prompt_key}
+    sys:
+      # If there is no system prompt, `content` decides whether to insert one.
+      # If there has been a system prompt, `override` decides whether to override it with `content`.
+      content: null # null means no system prompt. "" (empty string) means to insert an empty system prompt.
+      # NOTE: The chat template might insert or override the system prompt.
+      override: False
+    last_user_msg:
+      pfx: ""
+      sfx: ""
   max_prompt_length: 512
   max_response_length: 512
   train_batch_size: 1024
@@ -13,13 +24,6 @@ data:
   filter_overlong_prompts: False # for large-scale dataset, filtering overlong prompts could be timeconsuming. You should disable this and set `truncation='left'
   truncation: error
   image_key: images
-  sys_prompt:
-    # If there is no system prompt, `content` decides whether to insert one.
-    # If there has been a system prompt, `override` decides whether to override it with `content`.
-    content: null # null means no system prompt. "" (empty string) means to insert an empty system prompt.
-    # NOTE: The chat template might insert or override the system prompt.
-    role: system
-    override: False
 
 actor_rollout_ref:
   hybrid_engine: True

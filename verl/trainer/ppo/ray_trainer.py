@@ -402,7 +402,7 @@ class RayPPOTrainer(object):
         self.train_dataset = RLHFDataset(parquet_files=self.config.data.train_files,
                                          tokenizer=self.tokenizer,
                                          processor=self.processor,
-                                         prompt_key=self.config.data.prompt_key,
+                                         prompt_config=self.config.data.prompt,
                                          image_key=self.config.data.get('image_key', 'images'),
                                          max_prompt_length=self.config.data.max_prompt_length,
                                          filter_prompts=True,
