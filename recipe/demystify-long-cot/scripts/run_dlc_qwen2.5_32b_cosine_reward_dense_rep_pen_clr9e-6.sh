@@ -81,7 +81,7 @@ MODEL_HOME=${MODEL_HOME:-"${RAY_DATA_HOME}/models"}
 MODEL_PATH=${MODEL_PATH:-"${MODEL_HOME}/Qwen2.5-32B"}
 CKPTS_DIR=${CKPTS_DIR:-"${RAY_DATA_HOME}/ckpts/${project_name}/${exp_name}"}
 TRAIN_FILE=${TRAIN_FILE:-"${RAY_DATA_HOME}/data/math/train.parquet"}
-TEST_FILE=${TEST_FILE:-"${RAY_DATA_HOME}/data/aime-2024-boxed.parquet"}
+TEST_FILE=${TEST_FILE:-"${RAY_DATA_HOME}/data/aime-2024.parquet"}
 
 shuffle=True
 mini_batch_mode=random
@@ -110,12 +110,12 @@ ray job submit --no-wait --runtime-env="${RUNTIME_ENV}" \
     -- python3 -m verl.trainer.main_ppo \
     data.train_files="${TRAIN_FILE}" \
     data.val_files="${TEST_FILE}" \
-    data.prompt_key=prompt \
+    data.prompt.key=prompt \
+    +data.prompt.last_user_msg=boxed-sfx \
     data.truncation='left' \
     data.max_prompt_length=${max_prompt_length} \
     data.max_response_length=${max_response_length} \
     data.train_batch_size=${train_batch_size} \
-    data.truncation='left' \
     actor_rollout_ref.rollout.n=${n_trajs_per_prompt} \
     actor_rollout_ref.actor.kl_loss_coef=${kl_loss_coef} \
     actor_rollout_ref.actor.clip_ratio_low=${clip_eps_down} \

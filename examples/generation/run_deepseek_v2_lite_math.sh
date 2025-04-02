@@ -2,7 +2,7 @@ python3 -m verl.trainer.main_generation \
     trainer.nnodes=1 \
     trainer.n_gpus_per_node=8 \
     data.path=~/data/rlhf/gsm8k/test.parquet \
-    data.prompt_key=prompt \
+    data.prompt.key=prompt \
     data.n_samples=1 \
     data.output_path=~/data/rlhf/math/deepseek_v2_lite_gen_test.parquet \
     model.path=deepseek-ai/deepseek-llm-7b-chat \

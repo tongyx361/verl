@@ -17,7 +17,7 @@ python3 -m verl.trainer.main_generation \
     trainer.nnodes=1 \
     trainer.n_gpus_per_node=$nproc_per_node \
     data.path=$HOME/data/gsm8k/test.parquet \
-    data.prompt_key=prompt \
+    data.prompt.key=prompt \
     data.n_samples=1 \
     data.output_path=$save_path \
     model.path=Qwen/Qwen2.5-0.5B-Instruct \
