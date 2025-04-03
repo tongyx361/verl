@@ -18,6 +18,7 @@ import torch
 from omegaconf import DictConfig
 import math
 import time
+from collections import defaultdict
 
 
 def zipngram_tokens(tokens: list[int], ngram_size: int):
@@ -48,7 +49,7 @@ class NaiveRewardManager:
         rep_reward_tensor = torch.zeros_like(data.batch['responses'], dtype=torch.float32)
         accs: list[float] = []
 
-        already_print_data_sources = {}
+        already_print_data_sources = defaultdict(int)
 
         for i in range(len(data)):
             data_item = data[i]  # DataProtoItem
@@ -133,15 +134,13 @@ class NaiveRewardManager:
                 rep_reward_tensor[i] += tok_rewards
                 # print(f"{i=}: rep time: {time.time() - rep_start}")
 
-            if data_source not in already_print_data_sources:
-                already_print_data_sources[data_source] = 0
-
             if already_print_data_sources[data_source] < self.num_examine:
                 already_print_data_sources[data_source] += 1
+                print("[data_source]", data_source)
                 print("[prompt]", prompt_str)
                 print("[response]", response_str)
                 print("[ground_truth]", ground_truth)
-                print("[score]", score)
+                print("[final_reward]", final_reward)
                 print("[rep_reward]", rep_reward_tensor[i].sum().item())
 
         return {
