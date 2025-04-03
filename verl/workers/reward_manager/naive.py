@@ -100,8 +100,8 @@ class NaiveRewardManager:
                     else:
                         # Yes, they are swapped. This is required for the cosine formula below
                         # to work with negative numbers.
-                        min_value = cos_len_scaling_reward_cfg.wrong_reward.min
-                        max_value = cos_len_scaling_reward_cfg.wrong_reward.max
+                        min_value = cos_len_scaling_reward_cfg.wrong_reward.max
+                        max_value = cos_len_scaling_reward_cfg.wrong_reward.min
 
                     progress = valid_response_length / max_resp_len
                     cosine = math.cos(progress * math.pi)
