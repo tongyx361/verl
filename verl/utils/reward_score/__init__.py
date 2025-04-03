@@ -18,7 +18,8 @@ def _default_compute_score(data_source, solution_str, ground_truth, extra_info=N
     if data_source == 'openai/gsm8k':
         from . import gsm8k
         res = gsm8k.compute_score(solution_str, ground_truth)
-    elif data_source in ['lighteval/MATH', 'DigitalLearningGmbH/MATH-lighteval']:
+    elif data_source in ['lighteval/MATH', 'DigitalLearningGmbH/MATH-lighteval'] or any(
+            data_source.startswith(prefix) for prefix in ["MATH##", "aime"]):
         # from . import math
         # res = math.compute_score(solution_str, ground_truth)
 
@@ -29,9 +30,6 @@ def _default_compute_score(data_source, solution_str, ground_truth, extra_info=N
 
         from . import math_verify
         res = math_verify.compute_score(solution_str, ground_truth)
-    elif any(data_source.startswith(prefix) for prefix in ["MATH##", "aime"]):
-        from . import math_norm_str
-        res = math_norm_str.compute_score(solution_str, ground_truth)
     elif data_source in [
             'numina_aops_forum', 'numina_synthetic_math', 'numina_amc_aime', 'numina_synthetic_amc', 'numina_cn_k12',
             'numina_olympiads'
