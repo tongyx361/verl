@@ -4,8 +4,8 @@ set -euxo pipefail
 project_name='rl-prompt'
 
 adv_estimator=rloo
-clip_ratio_low=0.2
-clip_ratio_high=0.25 # 1 / (1 - clip_ratio_low) - 1
+clip_eps_down=0.2
+clip_eps_up=0.4
 kl_coef=0.0
 use_kl_loss=False
 kl_loss_coef=0
@@ -28,7 +28,7 @@ sp_size=8
 n_procs_per_node=8
 num_procs=$((NNODES * n_procs_per_node))
 
-exp_name="qwen2.5-32b-rloo-baseline-ctx2-14k-${num_procs}gpus"
+exp_name="qwen2.5-32b-rloo-baseline-ctx2-14k-cu0.4-${num_procs}gpus"
 
 fsdp_size=-1
 gen_tp=8
@@ -90,8 +90,8 @@ ray job submit --no-wait --runtime-env="${RUNTIME_ENV}" \
     actor_rollout_ref.actor.ppo_epochs=${ppo_epochs} \
     actor_rollout_ref.rollout.n=${n_trajs_per_prompt} \
     actor_rollout_ref.actor.kl_loss_coef=${kl_loss_coef} \
-    actor_rollout_ref.actor.clip_ratio_low=${clip_ratio_low} \
-    actor_rollout_ref.actor.clip_ratio_high=${clip_ratio_high} \
+    actor_rollout_ref.actor.clip_ratio_low=${clip_eps_down} \
+    actor_rollout_ref.actor.clip_ratio_high=${clip_eps_up} \
     algorithm.adv_estimator=${adv_estimator} \
     algorithm.kl_ctrl.kl_coef=${kl_coef} \
     algorithm.mini_batch.mode=${mini_batch_mode} \
