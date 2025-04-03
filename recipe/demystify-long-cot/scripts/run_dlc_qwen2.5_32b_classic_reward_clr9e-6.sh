@@ -14,7 +14,7 @@ n_procs_per_node=8
 num_procs=$((NNODES * n_procs_per_node))
 
 project_name='demystify-long-cot'
-exp_name="qwen2.5-32b-dlc-classic-reward-clr9e-6-${num_procs}gpus"
+exp_name="qwen2.5-32b-dlc-classic-reward-mv-clr9e-6-${num_procs}gpus"
 
 adv_estimator=gae
 gae_lambda=1.0
