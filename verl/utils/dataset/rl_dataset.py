@@ -130,6 +130,7 @@ class RLHFDataset(Dataset):
         self.dataframe = pd.concat(dataframes)
 
         print(f'dataset len: {len(self.dataframe)}')
+        print(f"{self.dataframe.sample(1).to_dict()}")
 
         # filter out too long prompts
         if self.filter_overlong_prompts:
