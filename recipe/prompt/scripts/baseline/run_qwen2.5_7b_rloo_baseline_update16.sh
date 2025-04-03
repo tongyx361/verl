@@ -32,6 +32,8 @@ fsdp_size=-1
 gen_tp=1
 gen_dp_size=$((num_procs / gen_tp))
 
+exp_name="qwen2.5-7b-rloo-baseline-update${num_updates_per_batch}-${num_procs}gpus"
+
 if [ "${TEST}" != "1" ]; then
     max_prompt_length=$((1024 * 2))
     max_response_length=$((1024 * 6))

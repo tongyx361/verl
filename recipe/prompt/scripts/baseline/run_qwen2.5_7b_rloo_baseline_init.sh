@@ -2,7 +2,6 @@
 set -euxo pipefail
 
 project_name='rl-prompt'
-exp_name='qwen2.5-7b-rloo-baseline-init'
 
 adv_estimator=rloo
 clip_ratio_low=0.2
@@ -28,6 +27,8 @@ NNODES=${NNODES:-4}
 sp_size=4 # sp_size=8 gets 7B stuck
 n_procs_per_node=8
 num_procs=$((NNODES * n_procs_per_node))
+
+exp_name="qwen2.5-7b-rloo-baseline-init-${num_procs}gpus"
 
 fsdp_size=-1
 gen_tp=1

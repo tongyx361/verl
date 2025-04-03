@@ -32,13 +32,14 @@ fsdp_size=-1
 gen_tp=1
 gen_dp_size=$((num_procs / gen_tp))
 
+exp_name="qwen2.5-7b-rloo-baseline-bs512x16-update${num_updates_per_batch}-${num_procs}gpus"
+
 if [ "${TEST}" != "1" ]; then
     max_prompt_length=$((1024 * 2))
     max_response_length=$((1024 * 6))
     train_batch_size=512
     n_trajs_per_prompt=16
     num_updates_per_batch=1
-    exp_name="qwen2.5-7b-rloo-baseline-bs512x16-update${num_updates_per_batch}"
     val_n=32
 else
     max_prompt_length=$((1024 * 2))
@@ -49,7 +50,7 @@ else
         train_batch_size=$gen_dp_size
     fi
     num_updates_per_batch=1
-    exp_name="qwen2.5-7b-rloo-baseline-bs512x2-update${num_updates_per_batch}-test"
+    exp_name="${exp_name}-test"
     val_n=1
 fi
 
