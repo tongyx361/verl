@@ -22,7 +22,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass, field
 from enum import Enum
 from pprint import pprint
-from typing import Type, Dict
+from typing import Type, Dict, Optional
 from copy import deepcopy
 from collections import defaultdict
 from functools import partial
@@ -39,7 +39,7 @@ from verl.single_controller.ray import RayResourcePool, RayWorkerGroup, RayClass
 from verl.single_controller.ray.base import create_colocated_worker_cls
 from verl.trainer.ppo import core_algos
 from verl.trainer.ppo.metric_utils import compute_data_metrics, compute_throughout_metrics, compute_timing_metrics, reduce_metrics, bootstrap_metric, calc_maj_val, process_validation_metrics
-from verl.utils.seqlen_balancing import get_seqlen_balanced_partitions, log_seqlen_unbalance
+from verl.utils.seqlen_balancing import get_dp_balanced_info, balance_batch_in_mini_batches, balance_batch
 from verl.utils.checkpoint.checkpoint_manager import find_latest_ckpt_path
 from verl.utils.dataset.rl_dataset import RLHFDataset, collate_fn
 from verl.utils.tracking import ValidationGenerationsLogger
@@ -784,24 +784,7 @@ class RayPPOTrainer(object):
         else:
             print(f"Warning: No dataloader state found at {dataloader_local_path}, will start from scratch")
 
-    def _balance_batch(self, batch: DataProto, metrics, logging_prefix='global_seqlen'):
-        """Reorder the data on single controller such that each dp rank gets similar total tokens"""
-        attention_mask = batch.batch['attention_mask']
-        batch_size = attention_mask.shape[0]
-        global_seqlen_lst = batch.batch['attention_mask'].view(batch_size, -1).sum(-1).tolist()  # (train_batch_size,)
-        world_size = self.actor_rollout_wg.world_size
-        global_partition_lst = get_seqlen_balanced_partitions(global_seqlen_lst,
-                                                              k_partitions=world_size,
-                                                              equal_size=True)
-        # reorder based on index. The data will be automatically equally partitioned by dispatch function
-        global_idx = torch.tensor([j for partition in global_partition_lst for j in partition])
-        batch.reorder(global_idx)
-        global_balance_stats = log_seqlen_unbalance(seqlen_list=global_seqlen_lst,
-                                                    partitions=global_partition_lst,
-                                                    prefix=logging_prefix)
-        metrics.update(global_balance_stats)
-
-    def fit(self):
+    def fit(self) -> None:
         """
         The training loop of PPO.
         The driver process only need to call the compute functions of the worker group through RPC to construct the PPO dataflow.
@@ -884,17 +867,37 @@ class RayPPOTrainer(object):
                     batch = batch.repeat(repeat_times=self.config.actor_rollout_ref.rollout.n, interleave=True)
                     batch = batch.union(gen_batch_output)
 
+                    # Shuffle the batch
+                    shuffle_batch_cfg = self.config.trainer.shuffle_batch
+                    if shuffle_batch_cfg.enabled:
+                        torch.manual_seed(shuffle_batch_cfg.seed)
+                        batch.reorder(torch.randperm(len(batch)))
+
+                    # Calculate the number of mini-batches, which is variable if the training batch size is not constant due to filteration, etc.
+                    traj_bsz = len(batch)
+                    traj_mini_bsz = self.config.actor_rollout_ref.actor.ppo_mini_batch_size * self.config.actor_rollout_ref.rollout.n
+                    num_mini_batches = (traj_bsz + traj_mini_bsz - 1) // traj_mini_bsz  # Ceiling by the `split` method
+                    metrics["mini_batch/num"] = num_mini_batches
+
+                    # DP balancing
+                    dp_balance_cfg = self.config.trainer.dp_balancing
+                    if dp_balance_cfg.enabled:
+                        if dp_balance_cfg.debug:
+                            print(f"Before DP balancing: {batch.batch=}")
+                        if dp_balance_cfg.force_across_mini_batches:
+                            balance_batch(batch, num_dp_ranks=self.actor_rollout_wg.world_size)
+                        else:  # Balance DP ranks within each mini-batch
+                            mini_batches: list[DataProto] = batch.chunk(chunks=num_mini_batches)
+                            balance_batch_in_mini_batches(mini_batches, num_dp_ranks=self.actor_rollout_wg.world_size)
+                        if dp_balance_cfg.debug:
+                            print(f"After DP balancing: {batch.batch=}")
+
                     batch.batch['response_mask'] = compute_response_mask(batch)
-                    # balance the number of valid tokens on each dp rank.
-                    # Note that this breaks the order of data inside the batch.
-                    # Please take care when you implement group based adv computation such as GRPO and rloo
-                    if self.config.trainer.balance_batch:
-                        self._balance_batch(batch, metrics=metrics)
 
                     # compute global_valid tokens
                     batch.meta_info['global_token_num'] = torch.sum(batch.batch['attention_mask'], dim=-1).tolist()
 
-                    batch.meta_info["mini_batch_loss_token_nums"] = self.calc_mini_batch_loss_token_nums(
+                    batch.meta_info["mini_batch_loss_token_nums"] = calc_mini_batch_loss_token_nums(
                         batch,
                         traj_mini_bsz=self.config.actor_rollout_ref.actor.ppo_mini_batch_size *
                         self.config.actor_rollout_ref.rollout.n,

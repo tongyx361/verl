@@ -29,7 +29,8 @@ from omegaconf import OmegaConf, open_dict
 from verl import DataProto
 from verl.single_controller.ray import RayWorkerGroup
 from verl.trainer.ppo.ray_trainer import RayPPOTrainer
-from verl.trainer.ppo.ray_trainer import Role, WorkerType, ResourcePoolManager, reduce_metrics, _timer, calc_mini_batch_loss_token_nums
+from verl.trainer.ppo.ray_trainer import Role, WorkerType, ResourcePoolManager, reduce_metrics, _timer, calc_mini_batch_loss_token_nums, compute_response_mask
+from verl.utils.seqlen_balancing import balance_batch, balance_batch_in_mini_batches
 from verl.trainer.ppo.metric_utils import _compute_response_info
 from verl.utils.checkpoint.checkpoint_manager import find_latest_ckpt_path
 from verl.utils.dataset.rl_dataset import RLHFDataset, collate_fn
@@ -37,13 +38,15 @@ from . import prime_core_algos
 
 
 def compute_advantage(data: DataProto, adv_estimator, config):
+    if "response_mask" not in data.batch.keys():
+        data.batch['response_mask'] = compute_response_mask(data)
+
     if adv_estimator == 'rloo':
-        responses = data.batch['responses']
-        response_length = responses.size(-1)
-        attention_mask = data.batch['attention_mask']
-        response_mask = attention_mask[:, -response_length:]
-        advantages, returns = prime_core_algos.compute_rloo_advantage_return(data, response_mask,
-                                                                             config.actor_rollout_ref.rollout.n, config)
+        advantages, returns = prime_core_algos.compute_rloo_advantage_return(
+            data,
+            response_mask=data.batch['response_mask'],
+            n_samples=config.actor_rollout_ref.rollout.n,
+            config=config)
         data.batch['advantages'] = advantages
         data.batch['returns'] = returns
     else:
@@ -318,7 +321,7 @@ class RayPRIMETrainer(RayPPOTrainer):
         if isinstance(self.train_dataloader.dataset, RLHFDataset):
             self.train_dataloader.dataset.resume_dataset_state()
 
-    def fit(self):
+    def fit(self) -> None:
         """
         The training loop of PPO.
         The driver process only need to call the compute functions of the worker group through RPC to construct the PPO dataflow.
@@ -386,12 +389,32 @@ class RayPRIMETrainer(RayPPOTrainer):
                     batch = batch.repeat(repeat_times=self.config.actor_rollout_ref.rollout.n, interleave=True)
                     batch = batch.union(gen_batch_output)
 
-                    # balance the number of valid tokens on each dp rank.
-                    # Note that this breaks the order of data inside the batch.
-                    # Please take care when you implement group based adv computation such as GRPO and rloo
-                    # self._balance_batch(batch, metrics=metrics)
+                    # Shuffle the batch
+                    shuffle_batch_cfg = self.config.trainer.shuffle_batch
+                    if shuffle_batch_cfg.enabled:
+                        torch.manual_seed(shuffle_batch_cfg.seed)
+                        batch.reorder(torch.randperm(len(batch)))
 
-                    # compute global_valid tokens
+                    # Calculate the number of mini-batches, which is variable if the training batch size is not constant due to filteration, etc.
+                    traj_bsz = len(batch)
+                    traj_mini_bsz = self.config.actor_rollout_ref.actor.ppo_mini_batch_size * self.config.actor_rollout_ref.rollout.n
+                    num_mini_batches = (traj_bsz + traj_mini_bsz - 1) // traj_mini_bsz  # Ceiling by the `split` method
+                    metrics["mini_batch/num"] = num_mini_batches
+
+                    # DP balancing
+                    dp_balance_cfg = self.config.trainer.dp_balancing
+                    if dp_balance_cfg.enabled:
+                        if dp_balance_cfg.debug:
+                            print(f"Before DP balancing: {batch.batch=}")
+                        if dp_balance_cfg.force_across_mini_batches:
+                            balance_batch(batch, num_dp_ranks=self.actor_rollout_wg.world_size)
+                        else:  # Balance DP ranks within each mini-batch
+                            mini_batches: list[DataProto] = batch.chunk(chunks=num_mini_batches)
+                            balance_batch_in_mini_batches(mini_batches, num_dp_ranks=self.actor_rollout_wg.world_size)
+                        if dp_balance_cfg.debug:
+                            print(f"After DP balancing: {batch.batch=}")
+
+                    batch.batch['response_mask'] = compute_response_mask(batch)
                     batch.meta_info['global_token_num'] = torch.sum(batch.batch['attention_mask'], dim=-1).tolist()
 
                     batch.meta_info["mini_batch_loss_token_nums"] = calc_mini_batch_loss_token_nums(

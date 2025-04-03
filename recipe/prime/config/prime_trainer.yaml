@@ -70,4 +70,12 @@ trainer:
   project_name: prime
   experiment_name: examples
   val_before_train: False
-  balance_batch: False
+  dp_balancing: # Only balance in mini-batches by default
+    enabled: True
+    force_across_mini_batches: False # Old `balance_batch` semantics
+    debug: False
+  shuffle_batch:
+    enabled: True
+    seed: ${seed}
+
+seed: 42

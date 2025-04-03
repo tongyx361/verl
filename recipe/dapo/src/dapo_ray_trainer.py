@@ -25,9 +25,10 @@ import numpy as np
 import torch
 
 from verl import DataProto
-from verl.trainer.ppo.ray_trainer import RayPPOTrainer, _timer, apply_kl_penalty, compute_advantage, AdvantageEstimator, calc_mini_batch_loss_token_nums
+from verl.trainer.ppo.ray_trainer import RayPPOTrainer, _timer, apply_kl_penalty, compute_advantage, AdvantageEstimator, calc_mini_batch_loss_token_nums, compute_response_mask
 from verl.trainer.ppo.metric_utils import (compute_data_metrics, compute_throughout_metrics, compute_timing_metrics,
                                            reduce_metrics)
+from verl.utils.seqlen_balancing import balance_batch, balance_batch_in_mini_batches
 
 
 class RayDAPOTrainer(RayPPOTrainer):
@@ -35,7 +36,7 @@ class RayDAPOTrainer(RayPPOTrainer):
     Note that this trainer runs on the driver process on a single CPU/GPU node.
     """
 
-    def fit(self):
+    def fit(self) -> None:
         """
         The training loop of PPO.
         The driver process only need to call the compute functions of the worker group through RPC to construct the PPO dataflow.
@@ -214,11 +215,32 @@ class RayDAPOTrainer(RayPPOTrainer):
                             traj_bsz = self.config.data.train_batch_size * self.config.actor_rollout_ref.rollout.n
                             batch = batch[:traj_bsz]
 
-                    # balance the number of valid tokens on each dp rank.
-                    # Note that this breaks the order of data inside the batch.
-                    # Please take care when you implement group based adv computation such as GRPO and rloo
-                    if self.config.trainer.balance_batch:
-                        self._balance_batch(batch, metrics=metrics)
+                    # Shuffle the batch
+                    shuffle_batch_cfg = self.config.trainer.shuffle_batch
+                    if shuffle_batch_cfg.enabled:
+                        torch.manual_seed(shuffle_batch_cfg.seed)
+                        batch.reorder(torch.randperm(len(batch)))
+
+                    # Calculate the number of mini-batches, which is variable if the training batch size is not constant due to filteration, etc.
+                    traj_bsz = len(batch)
+                    traj_mini_bsz = self.config.actor_rollout_ref.actor.ppo_mini_batch_size * self.config.actor_rollout_ref.rollout.n
+                    num_mini_batches = (traj_bsz + traj_mini_bsz - 1) // traj_mini_bsz  # Ceiling by the `split` method
+                    metrics["mini_batch/num"] = num_mini_batches
+
+                    # DP balancing
+                    dp_balance_cfg = self.config.trainer.dp_balancing
+                    if dp_balance_cfg.enabled:
+                        if dp_balance_cfg.debug:
+                            print(f"Before DP balancing: {batch.batch=}")
+                        if dp_balance_cfg.force_across_mini_batches:
+                            balance_batch(batch, num_dp_ranks=self.actor_rollout_wg.world_size)
+                        else:  # Balance DP ranks within each mini-batch
+                            mini_batches: list[DataProto] = batch.chunk(chunks=num_mini_batches)
+                            balance_batch_in_mini_batches(mini_batches, num_dp_ranks=self.actor_rollout_wg.world_size)
+                        if dp_balance_cfg.debug:
+                            print(f"After DP balancing: {batch.batch=}")
+
+                    batch.batch['response_mask'] = compute_response_mask(batch)
 
                     # compute global_valid tokens
                     batch.meta_info['global_token_num'] = torch.sum(batch.batch['attention_mask'], dim=-1).tolist()
