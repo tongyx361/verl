@@ -789,6 +789,34 @@ class RayPPOTrainer(object):
         else:
             print(f"Warning: No dataloader state found at {dataloader_local_path}, will start from scratch")
 
+    @property
+    def valid_role2train_dp_size(self) -> dict[Role, int]:
+        valid_roles = [Role.ActorRollout]
+        if self.use_critic:
+            valid_roles.append(Role.Critic)
+        if self.use_reference_policy:
+            valid_roles.append(Role.RefPolicy)
+        if self.use_rm:
+            valid_roles.append(Role.RewardModel)
+        # TODO: Unify with `role_worker_mapping`
+        role2train_sp_size = {
+            Role.ActorRollout: self.config.actor_rollout_ref.actor.ulysses_sequence_parallel_size,
+            Role.Critic: self.config.critic.ulysses_sequence_parallel_size,
+            Role.RefPolicy: self.config.actor_rollout_ref.ref.ulysses_sequence_parallel_size,
+            Role.RewardModel: self.config.reward_model.ulysses_sequence_parallel_size,
+        }
+        valid_role2train_dp_size = {
+            role: self.actor_rollout_wg.world_size // role2train_sp_size[role] for role in valid_roles
+        }
+        return valid_role2train_dp_size
+
+    def calc_role2mini_batch_loss_token_nums(self, batch: DataProto) -> dict[Role, list[int]]:
+        traj_mini_bsz = self.config.actor_rollout_ref.actor.ppo_mini_batch_size * self.config.actor_rollout_ref.rollout.n
+        return {
+            role: calc_mini_batch_loss_token_nums(batch, traj_mini_bsz=traj_mini_bsz, dp_size=train_dp_size)
+            for role, train_dp_size in self.valid_role2train_dp_size.items()
+        }
+
     def fit(self) -> None:
         """
         The training loop of PPO.
