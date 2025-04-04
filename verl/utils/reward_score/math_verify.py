@@ -31,7 +31,7 @@ def compute_score(model_output: str, ground_truth: str, return_dict: bool = Fals
     # Wrap the ground truth in \boxed{} format for verification
     ground_truth_boxed = "\\boxed{" + ground_truth + "}"
     try:
-        ret_score, pred = verify_func([ground_truth_boxed], [model_output])
+        ret_score, (golds, preds) = verify_func([ground_truth_boxed], [model_output])
     except Exception as e:
         pass
 
@@ -40,5 +40,5 @@ def compute_score(model_output: str, ground_truth: str, return_dict: bool = Fals
     else:
         return {
             "acc": ret_score,
-            "pred": pred,
+            "pred": preds[0],
         }

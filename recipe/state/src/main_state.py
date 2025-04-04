@@ -29,7 +29,7 @@ def state_score_fn(data_source, solution_str, ground_truth, extra_info=None):
     return {
         "score": 1.0 if result["acc"] else -1.0,
         "acc": result["acc"],
-        "pred": result["pred"],
+        "pred": result["preds"],
     }
 
 
