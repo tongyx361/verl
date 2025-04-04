@@ -569,7 +569,7 @@ class RayPPOTrainer(object):
             print(f'test_gen_batch meta info: {test_gen_batch.meta_info}')
 
             # pad to be divisible by dp_size
-            gen_tp_size = self.config.actor_rollout_ref.rollout.model_tensor_parallel_size
+            gen_tp_size = self.config.actor_rollout_ref.rollout.tensor_model_parallel_size
             gen_dp_size = self.actor_rollout_wg.world_size // gen_tp_size
             test_gen_batch_padded, pad_size = pad_dataproto_to_divisor(test_gen_batch, gen_dp_size)
             test_output_gen_batch_padded = self.actor_rollout_wg.generate_sequences(test_gen_batch_padded)
