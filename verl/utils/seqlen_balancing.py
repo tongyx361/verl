@@ -270,26 +270,26 @@ def get_reverse_idx(idx_map):
     return reverse_idx_map
 
 
-def get_dp_balanced_info(batch: DataProto, dp_size: int) -> tuple[list[list[int]], list[int]]:
+def get_dp_balanced_info(batch: DataProto, num_dp_ranks: int) -> tuple[list[list[int]], list[int]]:
     """Get the information for dp balanced mini batches"""
     attention_mask = batch.batch['attention_mask']
     batch_size = attention_mask.shape[0]
 
     batch_seqlens = attention_mask.view(batch_size, -1).sum(-1).tolist()  # (train_batch_size,)
-    batch_idx_partitions = get_seqlen_balanced_partitions(batch_seqlens, k_partitions=dp_size, equal_size=True)
+    batch_idx_partitions = get_seqlen_balanced_partitions(batch_seqlens, k_partitions=num_dp_ranks, equal_size=True)
 
     return batch_idx_partitions, batch_seqlens
 
 
-def balance_batch_in_mini_batches(mini_batches: list[DataProto], dp_size: int):
+def balance_batch_in_mini_batches(mini_batches: list[DataProto], num_dp_ranks: int):
     # Split into mini-batches
     batch_seqlens: list[int] = []
-    batch_idx_partitions: list[list[int]] = [[] for _ in range(dp_size)]
+    batch_idx_partitions: list[list[int]] = [[] for _ in range(num_dp_ranks)]
     in_batch_start_idx = 0
     for mini_batch in mini_batches:
-        mini_batch_partitions, mini_batch_seqlens = get_dp_balanced_info(mini_batch, dp_size=dp_size)
+        mini_batch_partitions, mini_batch_seqlens = get_dp_balanced_info(mini_batch, num_dp_ranks=num_dp_ranks)
 
-        for dp_rank in range(dp_size):
+        for dp_rank in range(num_dp_ranks):
             batch_seqlens.extend(mini_batch_seqlens)
             batch_idx_partitions[dp_rank].extend([i + in_batch_start_idx for i in mini_batch_partitions[dp_rank]])
         in_batch_start_idx += len(mini_batch.batch)
@@ -302,11 +302,11 @@ def balance_batch_in_mini_batches(mini_batches: list[DataProto], dp_size: int):
     return batch_idx_partitions, batch_seqlens
 
 
-def balance_batch(batch: DataProto, dp_size: int):
+def balance_batch(batch: DataProto, num_dp_ranks: int):
     """Reorder the data on single controller such that each dp rank gets similar total valid tokens.
     NOTE: This breaks the order of data inside the batch. Please take care when you implement group based adv computation such as GRPO and RLOO.
     """
-    batch_idx_partitions, batch_seqlens = get_dp_balanced_info(batch, dp_size=dp_size)
+    batch_idx_partitions, batch_seqlens = get_dp_balanced_info(batch, num_dp_ranks=num_dp_ranks)
     # reorder based on index. The data will be automatically equally partitioned by dispatch function
     batch_idxs = torch.tensor([j for partition in batch_idx_partitions for j in partition])
     batch.reorder(batch_idxs)

@@ -57,11 +57,11 @@ else
     overlong_buf_len=$((1024 * 1))
     max_response_length=$((1024 * 1 + overlong_buf_len))
     n_trajs_per_prompt=2
-    train_batch_size=$((num_procs))
+    train_batch_size=$((num_procs / n_trajs_per_prompt))
     if [ $train_batch_size -lt $gen_dp_size ]; then
         train_batch_size=$gen_dp_size
     fi
-    gen_batch_size=$((train_batch_size * 4))
+    gen_batch_size=$((train_batch_size * 2))
     num_updates_per_batch=2
     exp_name="${exp_name}-test"
     val_n=1

@@ -23,6 +23,9 @@ from pprint import pprint
 
 import numpy as np
 import torch
+from omegaconf import OmegaConf, open_dict
+from torch.utils.data import RandomSampler, SequentialSampler
+from torchdata.stateful_dataloader import StatefulDataLoader
 from tqdm import tqdm
 
 from verl import DataProto
@@ -32,9 +35,15 @@ from verl.trainer.ppo.metric_utils import (
     compute_timing_metrics,
     reduce_metrics,
 )
-from verl.trainer.ppo.ray_trainer import (AdvantageEstimator, RayPPOTrainer, _timer, apply_kl_penalty,
-                                          calc_mini_batch_loss_token_nums, compute_advantage, Role,
-                                          compute_response_mask)
+from verl.trainer.ppo.ray_trainer import (
+    AdvantageEstimator,
+    RayPPOTrainer,
+    _timer,
+    apply_kl_penalty,
+    calc_mini_batch_loss_token_nums,
+    compute_advantage,
+)
+from verl.utils.dataset.rl_dataset import RLHFDataset, collate_fn
 from verl.utils.seqlen_balancing import (
     balance_batch,
     balance_batch_in_mini_batches,
@@ -241,44 +250,24 @@ class RayStateTrainer(RayPPOTrainer):
                     # DP balancing
                     dp_balance_cfg = self.config.trainer.dp_balancing
                     if dp_balance_cfg.enable:
-                        valid_roles = [Role.ActorRollout]
-                        if self.use_critic:
-                            valid_roles.append(Role.Critic)
-                        if self.use_reference_policy:
-                            valid_roles.append(Role.RefPolicy)
-                        if self.use_rm:
-                            valid_roles.append(Role.RewardModel)
-                        # TODO: Unify with `role_worker_mapping`
-                        role2train_sp_size = {
-                            Role.ActorRollout: self.config.actor_rollout_ref.actor.ulysses_sequence_parallel_size,
-                            Role.Critic: self.config.critic.ulysses_sequence_parallel_size,
-                            Role.RefPolicy: self.config.actor_rollout_ref.ref.ulysses_sequence_parallel_size,
-                            Role.RewardModel: self.config.reward_model.ulysses_sequence_parallel_size,
-                        }
-                        valid_role2train_dp_size = {
-                            role: self.actor_rollout_wg.world_size // role2train_sp_size[role] for role in valid_roles
-                        }
-                        max_train_dp_size = max(valid_role2train_dp_size.values())
-
                         if dp_balance_cfg.debug:
                             print(f"Before DP balancing: {batch.batch=}")
                         if dp_balance_cfg.force_across_mini_batches:
-                            balance_batch(batch, dp_size=max_train_dp_size)
+                            balance_batch(batch, num_dp_ranks=self.actor_rollout_wg.world_size)
                         else:  # Balance DP ranks within each mini-batch
                             mini_batches: list[DataProto] = batch.chunk(chunks=num_mini_batches)
-                            balance_batch_in_mini_batches(mini_batches, dp_size=max_train_dp_size)
+                            balance_batch_in_mini_batches(mini_batches, num_dp_ranks=self.actor_rollout_wg.world_size)
                         if dp_balance_cfg.debug:
                             print(f"After DP balancing: {batch.batch=}")
 
                     # compute global_valid tokens
                     batch.meta_info['global_token_num'] = torch.sum(batch.batch['attention_mask'], dim=-1).tolist()
 
-                    batch.batch["response_mask"] = compute_response_mask(batch)
-
-                    batch.meta_info["role2mini_batch_loss_token_nums"] = {
-                        role: calc_mini_batch_loss_token_nums(batch, traj_mini_bsz=traj_mini_bsz, dp_size=train_dp_size)
-                        for role, train_dp_size in valid_role2train_dp_size.items()
-                    }
+                    batch.meta_info["mini_batch_loss_token_nums"] = calc_mini_batch_loss_token_nums(
+                        batch,
+                        traj_mini_bsz=self.config.actor_rollout_ref.actor.ppo_mini_batch_size *
+                        self.config.actor_rollout_ref.rollout.n,
+                        num_dp_ranks=self.actor_rollout_wg.world_size)
 
                     # recompute old_log_probs
                     with _timer('old_log_prob', timing_raw):
