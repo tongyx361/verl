@@ -61,7 +61,7 @@ else
     if [ $train_batch_size -lt $gen_dp_size ]; then
         train_batch_size=$gen_dp_size
     fi
-    gen_batch_size=$((train_batch_size * 3))
+    gen_batch_size=$((train_batch_size * 4))
     num_updates_per_batch=2
     exp_name="${exp_name}-test"
     val_n=1
