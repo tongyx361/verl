@@ -37,7 +37,6 @@ gen_dp_size=$((num_procs / gen_tp))
 
 reward_manager=dapo
 enable_overlong_buf=True
-overlong_buf_len=$((1024 * 4))
 overlong_penalty_factor=1.0
 
 enable_filter_groups=True
@@ -46,25 +45,28 @@ max_num_gen_batches=10
 
 if [ "${TEST}" != "1" ]; then
     max_prompt_length=$((1024 * 2))
+    overlong_buf_len=$((1024 * 4))
     max_response_length=$((1024 * 16 + overlong_buf_len))
     train_batch_size=512
+    gen_batch_size=$((train_batch_size * 4))
     num_updates_per_batch=16
-    n_trajs_per_prompt=64
+    n_trajs_per_prompt=16
     val_n=32
 else
     max_prompt_length=$((1024 * 2))
-    max_response_length=$((1024 * 2))
+    overlong_buf_len=$((1024 * 1))
+    max_response_length=$((1024 * 1 + overlong_buf_len))
     n_trajs_per_prompt=2
     train_batch_size=$((num_procs / n_trajs_per_prompt))
     if [ $train_batch_size -lt $gen_dp_size ]; then
         train_batch_size=$gen_dp_size
     fi
-    ppo_mini_batch_size=${train_batch_size}
+    num_updates_per_batch=2
     exp_name="${exp_name}-test"
     val_n=1
 fi
 
-gen_batch_size=$((train_batch_size * 4))
+
 
 # Ray
 RAY_ADDRESS=${RAY_ADDRESS:-"http://localhost:8265"}
