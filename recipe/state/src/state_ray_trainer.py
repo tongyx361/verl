@@ -25,13 +25,13 @@ import numpy as np
 import torch
 
 from verl import DataProto
-from verl.trainer.ppo.ray_trainer import RayPPOTrainer, _timer, apply_kl_penalty, compute_advantage, AdvantageEstimator, calc_mini_batch_loss_token_nums, compute_response_mask
+from verl.trainer.ppo.ray_trainer import RayPPOTrainer, _timer, apply_kl_penalty, compute_advantage, AdvantageEstimator, calc_mini_batch_loss_token_nums
 from verl.trainer.ppo.metric_utils import (compute_data_metrics, compute_throughout_metrics, compute_timing_metrics,
                                            reduce_metrics)
 from verl.utils.seqlen_balancing import balance_batch, balance_batch_in_mini_batches
 
 
-class RayDAPOTrainer(RayPPOTrainer):
+class RayStateTrainer(RayPPOTrainer):
     """
     Note that this trainer runs on the driver process on a single CPU/GPU node.
     """
@@ -239,8 +239,6 @@ class RayDAPOTrainer(RayPPOTrainer):
                             balance_batch_in_mini_batches(mini_batches, num_dp_ranks=self.actor_rollout_wg.world_size)
                         if dp_balance_cfg.debug:
                             print(f"After DP balancing: {batch.batch=}")
-
-                    batch.batch['response_mask'] = compute_response_mask(batch)
 
                     # compute global_valid tokens
                     batch.meta_info['global_token_num'] = torch.sum(batch.batch['attention_mask'], dim=-1).tolist()

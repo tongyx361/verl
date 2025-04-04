@@ -96,7 +96,7 @@ def fit(self) -> None:
 
                 # Shuffle the batch
                 shuffle_batch_cfg = self.config.trainer.shuffle_batch
-                if shuffle_batch_cfg.enabled:
+                if shuffle_batch_cfg.enable:
                     torch.manual_seed(shuffle_batch_cfg.seed)
                     batch.reorder(torch.randperm(len(batch)))
 
@@ -108,7 +108,7 @@ def fit(self) -> None:
 
                 # DP balancing
                 dp_balance_cfg = self.config.trainer.dp_balancing
-                if dp_balance_cfg.enabled:
+                if dp_balance_cfg.enable:
                     if dp_balance_cfg.debug:
                         print(f"Before DP balancing: {batch.batch=}")
                     if dp_balance_cfg.force_across_mini_batches:

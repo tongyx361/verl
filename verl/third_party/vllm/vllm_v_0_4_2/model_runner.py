@@ -183,7 +183,7 @@ class ModelRunner(ModelRunner):
         sampling_metadata = SamplingMetadata.prepare(seq_group_metadata_list, seq_lens, query_lens, self.device,
                                                      self.pin_memory)
 
-        if not self.scheduler_config.chunked_prefill_enabled:
+        if not self.scheduler_config.chunked_prefill_enable:
             assert (len(prefill_reqs) and len(decode_reqs)) == 0
 
         num_prefills = len(seq_lens)

@@ -192,11 +192,11 @@ algorithm:
 
 trainer:
   dp_balancing: # Only balance in mini-batches by default
-    enabled: True
+    enable: True
     force_across_mini_batches: False # Old `balance_batch` semantics
     debug: False
   shuffle_batch:
-    enabled: True
+    enable: True
     seed: ${seed}
   total_epochs: 30
   total_training_steps: null
