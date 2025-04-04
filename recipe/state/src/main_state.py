@@ -33,7 +33,7 @@ def state_score_fn(data_source, solution_str, ground_truth, extra_info=None):
     }
 
 
-@hydra.main(config_path='config', config_name='dapo_trainer', version_base=None)
+@hydra.main(config_path='config', config_name='state_trainer', version_base=None)
 def main(config):
     run_ppo(config)
 
