@@ -929,6 +929,7 @@ class RayPPOTrainer(object):
                     batch.meta_info['global_token_num'] = torch.sum(batch.batch['attention_mask'], dim=-1).tolist()
                     # Calculate mini-batch loss token numbers
                     num_dp_ranks = self.actor_rollout_wg.world_size
+                    print(f"{num_dp_ranks = }")
                     mini_batch_token_nums = []
                     traj_bsz = len(batch.batch)
                     traj_mini_bsz_per_rank = traj_mini_bsz // num_dp_ranks
