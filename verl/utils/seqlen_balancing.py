@@ -276,7 +276,7 @@ def get_dp_balanced_info(batch: DataProto, num_dp_ranks: int) -> tuple[list[list
     batch_size = attention_mask.shape[0]
 
     batch_seqlens = attention_mask.view(batch_size, -1).sum(-1).tolist()  # (train_batch_size,)
-    batch_idx_partitions = get_seqlen_balanced_partitions(global_seqlen_lst, k_partitions=num_dp_ranks, equal_size=True)
+    batch_idx_partitions = get_seqlen_balanced_partitions(batch_seqlens, k_partitions=num_dp_ranks, equal_size=True)
 
     return batch_idx_partitions, batch_seqlens
 
