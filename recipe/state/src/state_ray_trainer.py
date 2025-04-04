@@ -23,6 +23,9 @@ from pprint import pprint
 
 import numpy as np
 import torch
+from omegaconf import OmegaConf, open_dict
+from torch.utils.data import RandomSampler, SequentialSampler
+from torchdata.stateful_dataloader import StatefulDataLoader
 from tqdm import tqdm
 
 from verl import DataProto
@@ -40,6 +43,7 @@ from verl.trainer.ppo.ray_trainer import (
     calc_mini_batch_loss_token_nums,
     compute_advantage,
 )
+from verl.utils.dataset.rl_dataset import RLHFDataset, collate_fn
 from verl.utils.seqlen_balancing import (
     balance_batch,
     balance_batch_in_mini_batches,
@@ -50,10 +54,6 @@ class RayStateTrainer(RayPPOTrainer):
     """
     Note that this trainer runs on the driver process on a single CPU/GPU node.
     """
-
-    def _create_dataloader(self):
-        super()._create_dataloader()
-        self.train_dataloader.batch_size = self.config.data.gen_batch_size
 
     def fit(self) -> None:
         """
