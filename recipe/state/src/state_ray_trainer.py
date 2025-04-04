@@ -17,18 +17,33 @@ This trainer supports model-agonistic model initialization with huggingface
 """
 
 import uuid
-from pprint import pprint
-from copy import deepcopy
 from collections import defaultdict
-from tqdm import tqdm
+from copy import deepcopy
+from pprint import pprint
+
 import numpy as np
 import torch
+from tqdm import tqdm
 
 from verl import DataProto
-from verl.trainer.ppo.ray_trainer import RayPPOTrainer, _timer, apply_kl_penalty, compute_advantage, AdvantageEstimator, calc_mini_batch_loss_token_nums
-from verl.trainer.ppo.metric_utils import (compute_data_metrics, compute_throughout_metrics, compute_timing_metrics,
-                                           reduce_metrics)
-from verl.utils.seqlen_balancing import balance_batch, balance_batch_in_mini_batches
+from verl.trainer.ppo.metric_utils import (
+    compute_data_metrics,
+    compute_throughout_metrics,
+    compute_timing_metrics,
+    reduce_metrics,
+)
+from verl.trainer.ppo.ray_trainer import (
+    AdvantageEstimator,
+    RayPPOTrainer,
+    _timer,
+    apply_kl_penalty,
+    calc_mini_batch_loss_token_nums,
+    compute_advantage,
+)
+from verl.utils.seqlen_balancing import (
+    balance_batch,
+    balance_batch_in_mini_batches,
+)
 
 
 class RayStateTrainer(RayPPOTrainer):
@@ -36,14 +51,19 @@ class RayStateTrainer(RayPPOTrainer):
     Note that this trainer runs on the driver process on a single CPU/GPU node.
     """
 
+    def _create_dataloader(self):
+        super()._create_dataloader()
+        self.train_dataloader.batch_size = self.config.data.gen_batch_size
+
     def fit(self) -> None:
         """
         The training loop of PPO.
         The driver process only need to call the compute functions of the worker group through RPC to construct the PPO dataflow.
         The light-weight advantage computation is done on the driver process.
         """
-        from verl.utils.tracking import Tracking
         from omegaconf import OmegaConf
+
+        from verl.utils.tracking import Tracking
 
         logger = Tracking(project_name=self.config.trainer.project_name,
                           experiment_name=self.config.trainer.experiment_name,
