@@ -51,18 +51,17 @@ if [ "${TEST}" != "1" ]; then
     gen_batch_size=$((train_batch_size * 4))
     num_updates_per_batch=16
     n_trajs_per_prompt=16
+    ppo_mini_batch_size=$((train_batch_size / num_updates_per_batch))
     val_n=32
 else
     max_prompt_length=$((1024 * 2))
     overlong_buf_len=$((1024 * 1))
     max_response_length=$((1024 * 1 + overlong_buf_len))
     n_trajs_per_prompt=2
-    train_batch_size=$((num_procs / n_trajs_per_prompt))
-    if [ $train_batch_size -lt $gen_dp_size ]; then
-        train_batch_size=$gen_dp_size
-    fi
-    gen_batch_size=$((train_batch_size * 2))
+    ppo_mini_batch_size=$((num_procs / n_trajs_per_prompt))
     num_updates_per_batch=2
+    train_batch_size=$((ppo_mini_batch_size * num_updates_per_batch))
+    gen_batch_size=$((train_batch_size * 2))
     exp_name="${exp_name}-test"
     val_n=1
 fi
@@ -81,7 +80,7 @@ CKPTS_DIR=${CKPTS_DIR:-"${RAY_DATA_HOME}/ckpts/${project_name}/${exp_name}"}
 TRAIN_FILE=${TRAIN_FILE:-"${RAY_DATA_HOME}/data/dapo-math-unique-clean-17k.parquet"}
 TEST_FILE=${TEST_FILE:-"${RAY_DATA_HOME}/data/aime-2024.parquet"}
 
-ppo_mini_batch_size=$((train_batch_size / num_updates_per_batch))
+
 ppo_epochs=1
 total_epochs=100
 
