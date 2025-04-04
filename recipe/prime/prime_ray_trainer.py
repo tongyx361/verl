@@ -406,24 +406,44 @@ class RayPRIMETrainer(RayPPOTrainer):
                     # DP balancing
                     dp_balance_cfg = self.config.trainer.dp_balancing
                     if dp_balance_cfg.enable:
+                        valid_roles = [Role.ActorRollout]
+                        if self.use_critic:
+                            valid_roles.append(Role.Critic)
+                        if self.use_reference_policy:
+                            valid_roles.append(Role.RefPolicy)
+                        if self.use_rm:
+                            valid_roles.append(Role.RewardModel)
+                        # TODO: Unify with `role_worker_mapping`
+                        role2train_sp_size = {
+                            Role.ActorRollout: self.config.actor_rollout_ref.actor.ulysses_sequence_parallel_size,
+                            Role.Critic: self.config.critic.ulysses_sequence_parallel_size,
+                            Role.RefPolicy: self.config.actor_rollout_ref.ref.ulysses_sequence_parallel_size,
+                            Role.RewardModel: self.config.reward_model.ulysses_sequence_parallel_size,
+                        }
+                        valid_role2train_dp_size = {
+                            role: self.actor_rollout_wg.world_size // role2train_sp_size[role] for role in valid_roles
+                        }
+                        max_train_dp_size = max(valid_role2train_dp_size.values())
+
                         if dp_balance_cfg.debug:
                             print(f"Before DP balancing: {batch.batch=}")
                         if dp_balance_cfg.force_across_mini_batches:
-                            balance_batch(batch, num_dp_ranks=self.actor_rollout_wg.world_size)
+                            balance_batch(batch, dp_size=max_train_dp_size)
                         else:  # Balance DP ranks within each mini-batch
                             mini_batches: list[DataProto] = batch.chunk(chunks=num_mini_batches)
-                            balance_batch_in_mini_batches(mini_batches, num_dp_ranks=self.actor_rollout_wg.world_size)
+                            balance_batch_in_mini_batches(mini_batches, dp_size=max_train_dp_size)
                         if dp_balance_cfg.debug:
                             print(f"After DP balancing: {batch.batch=}")
 
-                    batch.batch['response_mask'] = compute_response_mask(batch)
+                    # compute global_valid tokens
                     batch.meta_info['global_token_num'] = torch.sum(batch.batch['attention_mask'], dim=-1).tolist()
 
-                    batch.meta_info["mini_batch_loss_token_nums"] = calc_mini_batch_loss_token_nums(
-                        batch,
-                        traj_mini_bsz=self.config.actor_rollout_ref.actor.ppo_mini_batch_size *
-                        self.config.actor_rollout_ref.rollout.n,
-                        num_dp_ranks=self.actor_rollout_wg.world_size)
+                    batch.batch["response_mask"] = compute_response_mask(batch)
+
+                    batch.meta_info["role2mini_batch_loss_token_nums"] = {
+                        role: calc_mini_batch_loss_token_nums(batch, traj_mini_bsz=traj_mini_bsz, dp_size=train_dp_size)
+                        for role, train_dp_size in valid_role2train_dp_size.items()
+                    }
 
                     # verify
                     with _timer('verify', timing_raw):

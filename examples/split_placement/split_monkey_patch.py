@@ -16,7 +16,7 @@ An naive implementation of split placment example
 """
 from pprint import pprint
 from verl import DataProto
-from verl.trainer.ppo.ray_trainer import compute_advantage, apply_kl_penalty, reduce_metrics, compute_data_metrics, _timer, compute_timing_metrics, compute_response_mask, AdvantageEstimator, calc_mini_batch_loss_token_nums
+from verl.trainer.ppo.ray_trainer import compute_advantage, apply_kl_penalty, reduce_metrics, compute_data_metrics, _timer, compute_timing_metrics, Role, compute_response_mask, AdvantageEstimator, calc_mini_batch_loss_token_nums
 from verl.utils.seqlen_balancing import balance_batch, balance_batch_in_mini_batches
 from copy import deepcopy
 import numpy as np
@@ -106,25 +106,51 @@ def fit(self) -> None:
                 num_mini_batches = (traj_bsz + traj_mini_bsz - 1) // traj_mini_bsz  # Ceiling by the `split` method
                 metrics["mini_batch/num"] = num_mini_batches
 
-                # DP balancing
-                dp_balance_cfg = self.config.trainer.dp_balancing
-                if dp_balance_cfg.enable:
-                    if dp_balance_cfg.debug:
-                        print(f"Before DP balancing: {batch.batch=}")
-                    if dp_balance_cfg.force_across_mini_batches:
-                        balance_batch(batch, num_dp_ranks=self.actor_rollout_wg.world_size)
-                    else:  # Balance DP ranks within each mini-batch
-                        mini_batches: list[DataProto] = batch.chunk(chunks=num_mini_batches)
-                        balance_batch_in_mini_batches(mini_batches, num_dp_ranks=self.actor_rollout_wg.world_size)
-                    if dp_balance_cfg.debug:
-                        print(f"After DP balancing: {batch.batch=}")
+                    # DP balancing
+                    dp_balance_cfg = self.config.trainer.dp_balancing
+                    if dp_balance_cfg.enable:
+                        valid_roles = [Role.ActorRollout]
+                        if self.use_critic:
+                            valid_roles.append(Role.Critic)
+                        if self.use_reference_policy:
+                            valid_roles.append(Role.RefPolicy)
+                        if self.use_rm:
+                            valid_roles.append(Role.RewardModel)
+                        # TODO: Unify with `role_worker_mapping`
+                        role2train_sp_size = {
+                            Role.ActorRollout: self.config.actor_rollout_ref.actor.ulysses_sequence_parallel_size,
+                            Role.Critic: self.config.critic.ulysses_sequence_parallel_size,
+                            Role.RefPolicy: self.config.actor_rollout_ref.ref.ulysses_sequence_parallel_size,
+                            Role.RewardModel: self.config.reward_model.ulysses_sequence_parallel_size,
+                        }
+                        valid_role2train_dp_size = {
+                            role: self.actor_rollout_wg.world_size // role2train_sp_size[role] for role in valid_roles
+                        }
+                        max_train_dp_size = max(valid_role2train_dp_size.values())
 
-                batch.batch['response_mask'] = compute_response_mask(batch)
+                        if dp_balance_cfg.debug:
+                            print(f"Before DP balancing: {batch.batch=}")
+                        if dp_balance_cfg.force_across_mini_batches:
+                            balance_batch(batch, dp_size=max_train_dp_size)
+                        else:  # Balance DP ranks within each mini-batch
+                            mini_batches: list[DataProto] = batch.chunk(chunks=num_mini_batches)
+                            balance_batch_in_mini_batches(mini_batches, dp_size=max_train_dp_size)
+                        if dp_balance_cfg.debug:
+                            print(f"After DP balancing: {batch.batch=}")
 
-                batch.meta_info['global_token_num'] = torch.sum(batch.batch['attention_mask'], dim=-1).tolist()
+                    # compute global_valid tokens
+                    batch.meta_info['global_token_num'] = torch.sum(batch.batch['attention_mask'], dim=-1).tolist()
+                
+                    batch.batch["response_mask"] = compute_response_mask(batch)
 
-                batch.meta_info["mini_batch_loss_token_nums"] = calc_mini_batch_loss_token_nums(
-                    batch, traj_mini_bsz=traj_mini_bsz, num_dp_ranks=self.actor_rollout_wg.world_size)
+                    batch.meta_info["role2mini_batch_loss_token_nums"] = {
+                        role:
+                            calc_mini_batch_loss_token_nums(batch,
+                                                            traj_mini_bsz=traj_mini_bsz,
+                                                            dp_size=train_dp_size)
+                        for role, train_dp_size in valid_role2train_dp_size.items()
+                    }
+
 
                 # recompute old_log_probs
                 with _timer('old_log_prob', timing_raw):

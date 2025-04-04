@@ -172,21 +172,21 @@ def compute_response_mask(data: DataProto):
     return attention_mask[:, -response_length:]
 
 
-def calc_mini_batch_loss_token_nums(batch: DataProto, traj_mini_bsz: int, num_dp_ranks: int) -> list[int]:
+def calc_mini_batch_loss_token_nums(batch: DataProto, traj_mini_bsz: int, dp_size: int) -> list[int]:
     if "response_mask" not in batch.batch.keys():
         batch.batch['response_mask'] = compute_response_mask(batch)
     response_mask = batch.batch['response_mask']
 
     traj_bsz = len(batch.batch)
     num_mini_batches = (traj_bsz + traj_mini_bsz - 1) // traj_mini_bsz
-    traj_mini_bsz_per_rank = traj_mini_bsz // num_dp_ranks
+    traj_mini_bsz_per_rank = traj_mini_bsz // dp_size
 
     mini_batch_loss_token_nums = []
     for _ in range(num_mini_batches):
         mini_batch_traj_idxs = []
-        for dp_rank in range(num_dp_ranks):
-            start_traj_idx = int(traj_bsz / num_dp_ranks * dp_rank)
-            next_start_traj_idx = int(traj_bsz / num_dp_ranks * (dp_rank + 1))
+        for dp_rank in range(dp_size):
+            start_traj_idx = int(traj_bsz / dp_size * dp_rank)
+            next_start_traj_idx = int(traj_bsz / dp_size * (dp_rank + 1))
             end_traj_idx = int(min(start_traj_idx + traj_mini_bsz_per_rank, next_start_traj_idx))
             mini_batch_traj_idxs.extend(list(range(start_traj_idx, end_traj_idx)))
         mini_batch_resp_mask = response_mask[mini_batch_traj_idxs]
@@ -569,7 +569,9 @@ class RayPPOTrainer(object):
             print(f'test_gen_batch meta info: {test_gen_batch.meta_info}')
 
             # pad to be divisible by dp_size
-            test_gen_batch_padded, pad_size = pad_dataproto_to_divisor(test_gen_batch, self.actor_rollout_wg.world_size)
+            gen_tp_size = self.config.actor_rollout_ref.rollout.model_tensor_parallel_size
+            gen_dp_size = self.actor_rollout_wg.world_size // gen_tp_size
+            test_gen_batch_padded, pad_size = pad_dataproto_to_divisor(test_gen_batch, gen_dp_size)
             test_output_gen_batch_padded = self.actor_rollout_wg.generate_sequences(test_gen_batch_padded)
 
             # unpad
@@ -885,13 +887,32 @@ class RayPPOTrainer(object):
                     # DP balancing
                     dp_balance_cfg = self.config.trainer.dp_balancing
                     if dp_balance_cfg.enable:
+                        valid_roles = [Role.ActorRollout]
+                        if self.use_critic:
+                            valid_roles.append(Role.Critic)
+                        if self.use_reference_policy:
+                            valid_roles.append(Role.RefPolicy)
+                        if self.use_rm:
+                            valid_roles.append(Role.RewardModel)
+                        # TODO: Unify with `role_worker_mapping`
+                        role2train_sp_size = {
+                            Role.ActorRollout: self.config.actor_rollout_ref.actor.ulysses_sequence_parallel_size,
+                            Role.Critic: self.config.critic.ulysses_sequence_parallel_size,
+                            Role.RefPolicy: self.config.actor_rollout_ref.ref.ulysses_sequence_parallel_size,
+                            Role.RewardModel: self.config.reward_model.ulysses_sequence_parallel_size,
+                        }
+                        valid_role2train_dp_size = {
+                            role: self.actor_rollout_wg.world_size // role2train_sp_size[role] for role in valid_roles
+                        }
+                        max_train_dp_size = max(valid_role2train_dp_size.values())
+
                         if dp_balance_cfg.debug:
                             print(f"Before DP balancing: {batch.batch=}")
                         if dp_balance_cfg.force_across_mini_batches:
-                            balance_batch(batch, num_dp_ranks=self.actor_rollout_wg.world_size)
+                            balance_batch(batch, dp_size=max_train_dp_size)
                         else:  # Balance DP ranks within each mini-batch
                             mini_batches: list[DataProto] = batch.chunk(chunks=num_mini_batches)
-                            balance_batch_in_mini_batches(mini_batches, num_dp_ranks=self.actor_rollout_wg.world_size)
+                            balance_batch_in_mini_batches(mini_batches, dp_size=max_train_dp_size)
                         if dp_balance_cfg.debug:
                             print(f"After DP balancing: {batch.batch=}")
 
@@ -900,12 +921,10 @@ class RayPPOTrainer(object):
                     # compute global_valid tokens
                     batch.meta_info['global_token_num'] = torch.sum(batch.batch['attention_mask'], dim=-1).tolist()
 
-                    batch.meta_info["mini_batch_loss_token_nums"] = calc_mini_batch_loss_token_nums(
-                        batch,
-                        traj_mini_bsz=self.config.actor_rollout_ref.actor.ppo_mini_batch_size *
-                        self.config.actor_rollout_ref.rollout.n,
-                        num_dp_ranks=self.actor_rollout_wg.world_size)
-
+                    batch.meta_info["role2mini_batch_loss_token_nums"] = {
+                        role: calc_mini_batch_loss_token_nums(batch, traj_mini_bsz=traj_mini_bsz, dp_size=train_dp_size)
+                        for role, train_dp_size in valid_role2train_dp_size.items()
+                    }
                     # recompute old_log_probs
                     with _timer('old_log_prob', timing_raw):
                         old_log_prob = self.actor_rollout_wg.compute_log_prob(batch)
