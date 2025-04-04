@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from typing import Union, Any
+
 try:
     from math_verify.metric import math_metric
     from math_verify.parser import LatexExtractionConfig, ExprExtractionConfig
@@ -19,7 +21,7 @@ except ImportError:
     print("To use Math-Verify, please install it first by running `pip install math-verify`.")
 
 
-def compute_score(model_output: str, ground_truth: str) -> bool:
+def compute_score(model_output: str, ground_truth: str, return_dict: bool = False) -> Union[bool, dict[str, Any]]:
     verify_func = math_metric(
         gold_extraction_target=(LatexExtractionConfig(),),
         pred_extraction_target=(ExprExtractionConfig(), LatexExtractionConfig()),
@@ -29,8 +31,14 @@ def compute_score(model_output: str, ground_truth: str) -> bool:
     # Wrap the ground truth in \boxed{} format for verification
     ground_truth_boxed = "\\boxed{" + ground_truth + "}"
     try:
-        ret_score, _ = verify_func([ground_truth_boxed], [model_output])
+        ret_score, pred = verify_func([ground_truth_boxed], [model_output])
     except Exception as e:
         pass
 
-    return ret_score
+    if not return_dict:
+        return ret_score
+    else:
+        return {
+            "acc": ret_score,
+            "pred": pred,
+        }

@@ -20,33 +20,17 @@ import os
 import ray
 import hydra
 
+from verl.utils.reward_score import math_verify
 
-def get_custom_reward_fn(config):
-    import importlib.util, os
 
-    reward_fn_config = config.get("custom_reward_function") or {}
-    file_path = reward_fn_config.get("path")
-    if not file_path:
-        return None
+def state_score_fn(data_source, solution_str, ground_truth, extra_info=None):
+    result = math_verify.compute_score(solution_str, ground_truth, return_dict=True)
 
-    if not os.path.exists(file_path):
-        raise FileNotFoundError(f"Reward function file '{file_path}' not found.")
-
-    spec = importlib.util.spec_from_file_location("custom_module", file_path)
-    module = importlib.util.module_from_spec(spec)
-    try:
-        spec.loader.exec_module(module)
-    except Exception as e:
-        raise RuntimeError(f"Error loading module from '{file_path}': {e}")
-
-    function_name = reward_fn_config.get("name")
-
-    if not hasattr(module, function_name):
-        raise AttributeError(f"Reward function '{function_name}' not found in '{file_path}'.")
-
-    print(f"using customized reward function '{function_name}' from '{file_path}'")
-
-    return getattr(module, function_name)
+    return {
+        "score": 1.0 if result["acc"] else -1.0,
+        "acc": result["acc"],
+        "pred": result["pred"],
+    }
 
 
 @hydra.main(config_path='config', config_name='dapo_trainer', version_base=None)
@@ -160,7 +144,7 @@ class TaskRunner:
 
             raise NotImplementedError
 
-        compute_score = get_custom_reward_fn(config)
+        compute_score = state_score_fn
         reward_fn = reward_manager_cls(tokenizer=tokenizer,
                                        num_examine=0,
                                        compute_score=compute_score,
