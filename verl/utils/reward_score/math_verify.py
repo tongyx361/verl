@@ -40,5 +40,5 @@ def compute_score(model_output: str, ground_truth: str, return_dict: bool = Fals
     else:
         return {
             "acc": ret_score,
-            "pred": preds[0],
+            "pred": preds[0] if len(preds) > 0 else "",
         }
