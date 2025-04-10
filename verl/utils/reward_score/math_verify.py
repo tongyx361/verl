@@ -33,6 +33,7 @@ def compute_score(
         pred_extraction_target=(ExprExtractionConfig(), LatexExtractionConfig()),
     )
     ret_score = 0.
+    preds = []
 
     # Wrap the ground truth in \boxed{} format for verification
     ground_truth_boxed = "\\boxed{" + ground_truth + "}"
