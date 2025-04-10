@@ -174,6 +174,14 @@ def compute_response_mask(data: DataProto):
 
 
 def calc_mini_batch_loss_token_nums(batch: DataProto, traj_mini_bsz: int, num_dp_ranks: int) -> list[int]:
+    """
+    NOTE: Be compatible with
+    
+    1. verl.workers.fsdp_workers.ActorRolloutRefWorker.update_actor
+    2. verl.workers.fsdp_workers.CriticWorker.update_critic
+
+    TODO: Calculate separate numbers if adopting different strategies for actor and critic
+    """
     if "response_mask" not in batch.batch.keys():
         batch.batch['response_mask'] = compute_response_mask(batch)
     response_mask = batch.batch['response_mask']
