@@ -3,7 +3,7 @@ set -uxo pipefail
 
 export VERL_HOME=${VERL_HOME:-"${HOME}/verl"}
 export TRAIN_FILE=${TRAIN_FILE:-"${VERL_HOME}/data/dapo-math-unique-clean-17k.parquet"}
-export TEST_FILE=${TEST_FILE:-"${VERL_HOME}/data/aime-2024.parquet"}
+export TEST_FILE=${TEST_FILE:-"${VERL_HOME}/data/aime-2024-clean.parquet"}
 
 mkdir -p "${VERL_HOME}/data"
 
