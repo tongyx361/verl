@@ -180,7 +180,8 @@ class RLHFDataset(Dataset):
                 break
         assert last_user_msg is not None, f'No user message found in the {chat=}'
         # Apply the template to the content
-        last_user_msg['content'] = Template(self.last_user_msg_template).render(**last_user_msg)
+        if self.last_user_msg_template:
+            last_user_msg['content'] = Template(self.last_user_msg_template).render(**last_user_msg)
 
         prompt_with_chat_template = self.tokenizer.apply_chat_template(chat, add_generation_prompt=True, tokenize=False)
 
