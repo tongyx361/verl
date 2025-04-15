@@ -23,6 +23,7 @@ import numpy as np
 from torch.utils.data import Dataset
 from transformers import PreTrainedTokenizer, ProcessorMixin
 from omegaconf import ListConfig, DictConfig
+from jinja2 import Template
 
 from verl.utils.model import compute_position_id_with_mask
 import verl.utils.torch_functional as verl_F
@@ -158,6 +159,18 @@ class RLHFDataset(Dataset):
         row_dict: dict = self.dataframe[item]
 
         chat = row_dict.pop(self.prompt_key)
+
+        # Find the last user message
+        last_user_msg = None
+        for msg in reversed(chat):
+            if msg['role'] == 'user':
+                last_user_msg = msg
+                break
+        assert last_user_msg is not None, f'No user message found in the {chat=}'
+        last_user_msg_template = self.config.last_user_msg_template
+        # Apply the template to the content
+        if last_user_msg_template:
+            last_user_msg['content'] = Template(last_user_msg_template).render(**last_user_msg)
 
         prompt_with_chat_template = self.tokenizer.apply_chat_template(chat, add_generation_prompt=True, tokenize=False)
 
