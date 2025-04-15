@@ -15,7 +15,14 @@
 
 
 def _default_compute_score(data_source, solution_str, ground_truth, extra_info=None):
-    if data_source == 'openai/gsm8k':
+    if data_source.startswith("MATH##") or data_source.startswith("aime"):
+        from . import math_verify
+        verify_result = math_verify.compute_score(solution_str, ground_truth, return_dict=True)
+        res = {
+            "score": 1.0 if verify_result["acc"] else -1.0,
+            **verify_result,
+        }
+    elif data_source == 'openai/gsm8k':
         from . import gsm8k
         res = gsm8k.compute_score(solution_str, ground_truth)
     elif data_source in ['lighteval/MATH', 'DigitalLearningGmbH/MATH-lighteval']:
@@ -25,7 +32,6 @@ def _default_compute_score(data_source, solution_str, ground_truth, extra_info=N
         # For enhanced accuracy, consider utilizing Math-Verify (https://github.com/huggingface/Math-Verify).
         # Note: Math-Verify needs to be manually installed via pip: `pip install math-verify`.
         # To use it, override the `compute_score` function with the following implementation:
-
         # from . import math_verify
         # res = math_verify.compute_score(solution_str, ground_truth)
     elif data_source == 'math_dapo' or data_source.startswith("aime"):
