@@ -12,22 +12,22 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from typing import Iterable, Optional, Set, Tuple
+
 import torch
 from torch import nn
-from typing import Optional, Union, Iterable, Tuple, Set
 from transformers import PretrainedConfig
 from vllm.model_executor.layers.fused_moe import FusedMoE
-from vllm.model_executor.model_loader.weight_utils import (default_weight_loader, maybe_remap_kv_scale_name)
+from vllm.model_executor.model_loader.weight_utils import default_weight_loader, maybe_remap_kv_scale_name
 from vllm.model_executor.models.utils import is_pp_missing_parameter
 
 
 def patched_ds_v3_load_weights(model: nn.Module, weights: Iterable[Tuple[str, torch.Tensor]]) -> Set[str]:
-
     def get_spec_layer_idx_from_weight_name(config: PretrainedConfig, weight_name: str) -> Optional[int]:
         if hasattr(config, "num_nextn_predict_layers") and (config.num_nextn_predict_layers > 0):
             layer_idx = config.num_hidden_layers
             for i in range(config.num_nextn_predict_layers):
-                if weight_name.startswith(f"model.layers.{layer_idx+i}."):
+                if weight_name.startswith(f"model.layers.{layer_idx + i}."):
                     return layer_idx + i
         return None
 
@@ -45,10 +45,12 @@ def patched_ds_v3_load_weights(model: nn.Module, weights: Iterable[Tuple[str, to
         ("gate_up_proj", "up_proj", 1),
     ]
 
-    expert_params_mapping = FusedMoE.make_expert_params_mapping(ckpt_gate_proj_name="gate_proj",
-                                                                ckpt_down_proj_name="down_proj",
-                                                                ckpt_up_proj_name="up_proj",
-                                                                num_experts=model.config.n_routed_experts)
+    expert_params_mapping = FusedMoE.make_expert_params_mapping(
+        ckpt_gate_proj_name="gate_proj",
+        ckpt_down_proj_name="down_proj",
+        ckpt_up_proj_name="up_proj",
+        num_experts=model.config.n_routed_experts,
+    )
     params_dict = dict(model.named_parameters())
     loaded_params: Set[str] = set()
 
@@ -60,10 +62,10 @@ def patched_ds_v3_load_weights(model: nn.Module, weights: Iterable[Tuple[str, to
         if spec_layer is not None:
             continue
 
-        for (param_name, weight_name, shard_id) in stacked_params_mapping:
+        for param_name, weight_name, shard_id in stacked_params_mapping:
             if weight_name not in name:
                 continue
-            if (("mlp.experts." in name) and name not in params_dict):
+            if ("mlp.experts." in name) and name not in params_dict:
                 continue
             name = name.replace(weight_name, param_name)
             if name.endswith(".bias") and name not in params_dict:
