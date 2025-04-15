@@ -98,7 +98,7 @@ infer_ppo_max_token_len=$((2048 * num_procs))
 
 ray job submit --no-wait --runtime-env="${RUNTIME_ENV}" \
     --working-dir "${WORKING_DIR}" \
-    -- python3 -m recipe.state.src.main_state \
+    -- python3 -m recipe.dapo.src.main_dapo \
     data.train_files="${TRAIN_FILE}" \
     data.val_files="${TEST_FILE}" \
     data.prompt_key=prompt \
