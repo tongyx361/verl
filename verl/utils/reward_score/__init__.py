@@ -15,7 +15,7 @@
 import logging
 from concurrent.futures import TimeoutError
 
-from pebble import process
+from pebble.concurrent import process
 
 TIMEOUT = 5
 
