@@ -12,33 +12,16 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # from . import gsm8k, math, prime_math, prime_code
-import logging
-from concurrent.futures import TimeoutError
-
-from pebble import process
-
-TIMEOUT = 5
-
-logger = logging.getLogger(__name__)
 
 
 def _default_compute_score(data_source, solution_str, ground_truth, extra_info=None):
     if data_source.startswith("MATH##") or data_source.startswith("aime"):
         from . import math_verify
-        verify_w_timeout = process(timeout=TIMEOUT)(math_verify.compute_score)
-        verify_result = verify_w_timeout(solution_str, ground_truth, return_dict=True).result()
-        fail_score = -1.0
-        res = {"score": fail_score, "acc": False, "pred": ""}
-        try:
-            res = {
-                "score": 1.0 if verify_result["acc"] else fail_score,
-                "acc": verify_result["acc"],
-                "pred": verify_result["pred"],
-            }
-        except TimeoutError as e:
-            logger.warning(f"Timeout for {data_source=}\n{solution_str=}\n{ground_truth=}\n{extra_info=}\n{e}")
-        except Exception as e:
-            logger.warning(f"Error for {data_source=}\n{solution_str=}\n{ground_truth=}\n{extra_info=}\n{e}")
+        verify_result = math_verify.compute_score(solution_str, ground_truth, return_dict=True)
+        res = {
+            "score": 1.0 if verify_result["acc"] else -1.0,
+            **verify_result,
+        }
     elif data_source == 'openai/gsm8k':
         from . import gsm8k
         res = gsm8k.compute_score(solution_str, ground_truth)
