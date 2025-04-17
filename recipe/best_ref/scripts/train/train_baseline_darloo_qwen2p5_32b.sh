@@ -3,13 +3,14 @@ set -euxo pipefail
 
 TEST=${TEST:-"0"}
 NNODES=${NNODES:-16}
+ACTOR_LR=${ACTOR_LR:-"5e-6"}
 
 project_name='best-ref'
 
 n_procs_per_node=8
 num_procs=$((NNODES * n_procs_per_node))
 
-exp_name="darloo-qwen2p5-32b-${num_procs}gpus"
+exp_name="darloo-qwen2p5-32b-${ACTOR_LR}-${num_procs}gpus"
 
 adv_estimator=rloo
 # Clip epsilons
@@ -84,7 +85,6 @@ TEST_FILE=${TEST_FILE:-"${RAY_DATA_HOME}/data/aime-2024-clean.parquet"}
 ppo_epochs=1
 total_epochs=100
 
-actor_lr=1e-6
 lr_warmup_steps=10
 
 test_freq=5
@@ -134,7 +134,7 @@ ray job submit --no-wait --runtime-env="${RUNTIME_ENV}" \
     actor_rollout_ref.rollout.log_prob_max_token_len_per_gpu=${infer_ppo_max_token_len} \
     actor_rollout_ref.model.path="${MODEL_PATH}" \
     actor_rollout_ref.model.enable_gradient_checkpointing=True \
-    actor_rollout_ref.actor.optim.lr=${actor_lr} \
+    actor_rollout_ref.actor.optim.lr="${ACTOR_LR}" \
     actor_rollout_ref.actor.optim.lr_warmup_steps=${lr_warmup_steps} \
     actor_rollout_ref.actor.optim.weight_decay=${weight_decay} \
     actor_rollout_ref.actor.ppo_mini_batch_size="${ppo_mini_batch_size}" \
