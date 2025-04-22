@@ -97,7 +97,7 @@ class RLHFDataset(Dataset):
         for i, parquet_file in enumerate(data_files):
             self.data_files[i] = copy_to_local(src=parquet_file, cache_dir=self.cache_dir)
 
-    def _read_files_and_tokenize(self):
+    def _read_files_and_tokenize(self) -> None:
         dataframes = []
         for parquet_file in self.data_files:
             # read parquet files and cache
@@ -119,6 +119,12 @@ class RLHFDataset(Dataset):
             )
 
             print(f"filter dataset len: {len(self.dataframe)}")
+
+        if self.config.repeat.factor and self.config.repeat.factor != 1:
+            self.dataframe = self.dataframe.repeat(self.config.repeat.factor)
+            shuffle_seed = self.config.repeat.shuffle_seed
+            if shuffle_seed >= 0:
+                self.dataframe = self.dataframe.shuffle(seed=shuffle_seed)
 
     def resume_dataset_state(self):
         self.serialize_dataset = not hasattr(self, "original_data_files")
