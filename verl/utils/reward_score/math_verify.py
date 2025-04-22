@@ -12,12 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Union, Any
+from typing import Any, Union
 
 try:
-    from math_verify.metric import math_metric
-    from math_verify.parser import LatexExtractionConfig, ExprExtractionConfig
     from math_verify.errors import TimeoutException
+    from math_verify.metric import math_metric
+    from math_verify.parser import ExprExtractionConfig, LatexExtractionConfig
 except ImportError:
     print("To use Math-Verify, please install it first by running `pip install math-verify`.")
 
@@ -32,7 +32,7 @@ def compute_score(
         gold_extraction_target=(LatexExtractionConfig(),),
         pred_extraction_target=(ExprExtractionConfig(), LatexExtractionConfig()),
     )
-    ret_score = 0.
+    ret_score = 0.0
     preds = []
 
     # Wrap the ground truth in \boxed{} format for verification
