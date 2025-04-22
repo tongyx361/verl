@@ -12,6 +12,8 @@ num_procs=$((NNODES * n_procs_per_node))
 
 exp_name="dapo-qwen2p5-32b-lr${ACTOR_LR}-${num_procs}gpus"
 
+repeat_factor=100
+
 adv_estimator=grpo
 # Clip epsilons
 clip_eps_down=0.2
@@ -102,6 +104,7 @@ ray job submit --no-wait --runtime-env="${RUNTIME_ENV}" \
     data.train_files="${TRAIN_FILE}" \
     data.val_files="${TEST_FILE}" \
     data.prompt_key=prompt \
+    data.repeat.factor=${repeat_factor} \
     +data=cot_boxed_sfx_template \
     data.truncation='error' \
     data.max_prompt_length=${max_prompt_length} \
