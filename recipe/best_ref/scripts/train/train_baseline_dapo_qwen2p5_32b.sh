@@ -10,9 +10,9 @@ project_name='best-ref'
 n_procs_per_node=8
 num_procs=$((NNODES * n_procs_per_node))
 
-exp_name="dapo-qwen2p5-32b-lr${ACTOR_LR}-${num_procs}gpus"
-
 repeat_factor=100
+
+exp_name="dapo-rep${repeat_factor}-qwen2p5-32b-lr${ACTOR_LR}-${num_procs}gpus"
 
 adv_estimator=grpo
 # Clip epsilons
