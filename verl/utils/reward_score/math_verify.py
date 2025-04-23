@@ -40,8 +40,10 @@ def compute_score(
     try:
         ret_score, (golds, preds) = verify_func([ground_truth_boxed], [model_output])
     except Exception as e:
+        print(e)
         pass
-    except TimeoutException:
+    except TimeoutException as t_e:
+        print(t_e)
         ret_score = timeout_score
 
     if not return_dict:
