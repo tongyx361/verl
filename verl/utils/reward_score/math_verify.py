@@ -42,9 +42,12 @@ def compute_score(
     except Exception as e:
         print(e)
         pass
-    except TimeoutException as t_e:
-        print(t_e)
+    except TimeoutException as e:
+        print(e)
         ret_score = timeout_score
+    except BaseException as e:
+        print(e)
+        pass
 
     if not return_dict:
         return ret_score
