@@ -312,7 +312,8 @@ class RayDAPOTrainer(RayPPOTrainer):
                         else:
                             # Align the batch
                             traj_bsz = self.config.data.train_batch_size * self.config.actor_rollout_ref.rollout.n
-                            qualified_rate = len(batch) / (traj_bsz * num_gen_batches)
+                            gen_traj_bsz = self.batch_sampler.batch_size * self.config.actor_rollout_ref.rollout.n
+                            qualified_rate = len(batch) / (gen_traj_bsz * num_gen_batches)
                             self.batch_sampler.batch_size = (
                                 int(1 / qualified_rate + 1) * self.config.data.train_batch_size
                             )
