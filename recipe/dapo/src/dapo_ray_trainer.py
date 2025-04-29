@@ -81,17 +81,45 @@ class RayDAPOTrainer(RayPPOTrainer):
             self.train_sampler = SequentialSampler(data_source=self.train_dataset)
 
         class DynamicBatchSampler(BatchSampler):
-            def __iter__(self) -> Iterator[list[int]]:
-                # Implemented based on the benchmarking in https://github.com/pytorch/pytorch/pull/76951
-                sampler_iter = iter(self.sampler)
+            def __init__(self, sampler, batch_size, drop_last):
+                super().__init__(sampler, batch_size, drop_last)
+                self._sampler_iter = None
+                self._batch_size_changed = False
 
-                batch = [*itertools.islice(sampler_iter, self.batch_size)]
-                while batch:
-                    logger.debug("self.batch_size=%d, len(batch)=%d", self.batch_size, len(batch))
+            def __iter__(self) -> Iterator[list[int]]:
+                # Store the iterator so we can reset if needed
+                self._sampler_iter = iter(self.sampler)
+                while True:
+                    # Get up to batch_size indices
+                    batch = [*itertools.islice(self._sampler_iter, self.batch_size)]
+
+                    # If we didn't get any indices, we're done
+                    if not batch:
+                        break
+
+                    # If we have fewer than batch_size and drop_last is True, break
                     if self.drop_last and len(batch) < self.batch_size:
                         break
+
+                    logger.debug("self.batch_size=%d, len(batch)=%d", self.batch_size, len(batch))
                     yield batch
-                    batch = [*itertools.islice(sampler_iter, self.batch_size)]
+
+                    # Check if batch size was changed
+                    if self._batch_size_changed:
+                        self._batch_size_changed = False
+                        # No need to reset iterator - we'll just use the new batch size for next batch
+
+            def reset(self):
+                """Reset the sampler iterator to start from beginning"""
+                self._sampler_iter = iter(self.sampler)
+
+            def set_batch_size(self, batch_size):
+                """Set a new batch size and mark that it changed"""
+                if batch_size != self.batch_size:
+                    self.batch_size = batch_size
+                    self._batch_size_changed = True
+                    return True
+                return False
 
         self.batch_sampler = DynamicBatchSampler(
             sampler=self.train_sampler,
@@ -105,6 +133,23 @@ class RayDAPOTrainer(RayPPOTrainer):
             num_workers=8,
             collate_fn=collate_fn,
         )
+
+        # Add a reset method to properly handle dynamic batch size changes
+        def reset_dataloader():
+            """Reset the dataloader to reflect batch size changes"""
+            state_dict = self.train_dataloader.state_dict()
+            self.train_dataloader = StatefulDataLoader(
+                dataset=self.train_dataset,
+                batch_sampler=self.batch_sampler,
+                num_workers=8,
+                collate_fn=collate_fn,
+            )
+            # Only load state if we had started iterating
+            if state_dict.get("num_samples_yielded", 0) > 0:
+                self.train_dataloader.load_state_dict(state_dict)
+
+        # Attach the reset method to the dataloader for easier access
+        self.train_dataloader.reset = reset_dataloader
 
         self.val_dataset = dataset_cls(
             data_files=self.config.data.val_files,
@@ -324,14 +369,21 @@ class RayDAPOTrainer(RayPPOTrainer):
                         qualified_rate = len(batch) / gen_traj_cnt
 
                         prompt_bsz = self.config.data.train_batch_size
-                        self.batch_sampler.batch_size = int((1 / qualified_rate + 1) * 1.5) * prompt_bsz
+                        # Use the new set_batch_size method instead of direct assignment
+                        new_batch_size = int((1 / qualified_rate + 1) * 1.5) * prompt_bsz
+                        self.batch_sampler.set_batch_size(new_batch_size)
                         if num_prompt_in_batch < prompt_bsz:
                             print(f"{num_prompt_in_batch=} < {prompt_bsz=}")
                             max_num_gen_batches = self.config.algorithm.filter_groups.max_num_gen_batches
                             if max_num_gen_batches <= 0 or num_gen_batches < max_num_gen_batches:
-                                self.batch_sampler.batch_size -= gen_prompt_cnt
+                                # Use the new set_batch_size method instead of direct subtraction
+                                adjusted_batch_size = new_batch_size - gen_prompt_cnt
+                                self.batch_sampler.set_batch_size(adjusted_batch_size)
+                                # Reset both the sampler iterator and the dataloader
+                                self.batch_sampler.reset()
+                                self.train_dataloader.reset()
                                 print(
-                                    f"{num_gen_batches=}. Setting {self.batch_sampler.batch_size=}"
+                                    f"{num_gen_batches=}. Setting batch_size={adjusted_batch_size}"
                                     " and keep generating..."
                                 )
                                 continue
@@ -345,6 +397,11 @@ class RayDAPOTrainer(RayPPOTrainer):
                             # Align the batch
                             traj_bsz = prompt_bsz * self.config.actor_rollout_ref.rollout.n
                             batch = batch[:traj_bsz]
+
+                            self.batch_sampler.set_batch_size(new_batch_size)
+                            # Reset both the sampler iterator and the dataloader
+                            self.batch_sampler.reset()
+                            self.train_dataloader.reset()
 
                     # balance the number of valid tokens on each dp rank.
                     # Note that this breaks the order of data inside the batch.
