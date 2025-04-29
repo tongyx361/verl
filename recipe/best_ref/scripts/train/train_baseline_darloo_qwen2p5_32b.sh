@@ -56,6 +56,7 @@ if [ "${TEST}" != "1" ]; then
     val_n=32
     val_before_train=True
     resume_mode=auto
+    save_freq=5
 else
     max_prompt_length=$((1024 * 2))
     overlong_buf_len=$((1024 * 1))
@@ -69,9 +70,10 @@ else
     val_n=1
     val_before_train=False
     resume_mode=disable
+    save_freq=-1
 fi
 
-
+test_freq=${save_freq}
 
 # Ray
 RAY_ADDRESS=${RAY_ADDRESS:-"http://localhost:8265"}
@@ -90,9 +92,6 @@ ppo_epochs=1
 total_epochs=100
 
 lr_warmup_steps=10
-
-test_freq=5
-save_freq=5
 
 offload=False
 
