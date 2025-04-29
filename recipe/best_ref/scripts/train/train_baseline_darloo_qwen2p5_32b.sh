@@ -32,7 +32,7 @@ top_p=1
 val_top_p=0.7
 
 sp_size=8
-fsdp_size=-1
+fsdp_size=64
 
 gen_tp=8
 
