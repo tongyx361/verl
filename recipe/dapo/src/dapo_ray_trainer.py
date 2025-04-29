@@ -18,6 +18,7 @@ This trainer supports model-agonistic model initialization with huggingface
 
 import itertools
 import logging
+import os
 import uuid
 from collections import defaultdict
 from copy import deepcopy
