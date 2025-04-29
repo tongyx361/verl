@@ -23,6 +23,9 @@ from pprint import pprint
 
 import numpy as np
 import torch
+from omegaconf import OmegaConf, open_dict
+from torch.utils.data import BatchSampler, Dataset, RandomSampler, SequentialSampler
+from torchdata.stateful_dataloader import StatefulDataLoader
 from tqdm import tqdm
 
 from verl import DataProto
@@ -33,12 +36,94 @@ from verl.trainer.ppo.metric_utils import (
     reduce_metrics,
 )
 from verl.trainer.ppo.ray_trainer import AdvantageEstimator, RayPPOTrainer, _timer, apply_kl_penalty, compute_advantage
+from verl.utils.dataset.rl_dataset import RLHFDataset, collate_fn
 
 
 class RayDAPOTrainer(RayPPOTrainer):
     """
     Note that this trainer runs on the driver process on a single CPU/GPU node.
     """
+
+    def _create_dataloader(self):
+        # TODO: we have to make sure the batch size is divisible by the dp size
+        from verl.utils.import_utils import load_extern_type
+
+        if "custom_cls" in self.config.data and self.config.data.custom_cls.get("path", None) is not None:
+            dataset_cls = load_extern_type(self.config.data.custom_cls.path, self.config.data.custom_cls.name)
+            if not issubclass(dataset_cls, Dataset):
+                raise TypeError(
+                    f"The custom dataset class '{self.config.data.custom_cls.name}' from "
+                    f"'{self.config.data.custom_cls.path}' must inherit from torch.utils.data.Dataset"
+                )
+        else:
+            dataset_cls = RLHFDataset
+
+        self.train_dataset = dataset_cls(
+            data_files=self.config.data.train_files,
+            tokenizer=self.tokenizer,
+            processor=self.processor,
+            config=self.config.data,
+        )
+
+        # use sampler for better ckpt resume
+        if self.config.data.shuffle:
+            train_dataloader_generator = torch.Generator()
+            train_dataloader_generator.manual_seed(self.config.data.get("seed", 1))
+            self.train_sampler = RandomSampler(data_source=self.train_dataset, generator=train_dataloader_generator)
+        else:
+            self.train_sampler = SequentialSampler(data_source=self.train_dataset)
+
+        self.batch_sampler = BatchSampler(
+            sampler=self.train_sampler,
+            batch_size=self.config.data.get("gen_batch_size", self.config.data.train_batch_size),
+            drop_last=True,
+        )
+
+        self.train_dataloader = StatefulDataLoader(
+            dataset=self.train_dataset,
+            batch_sampler=self.batch_sampler,
+            num_workers=8,
+            collate_fn=collate_fn,
+        )
+
+        self.val_dataset = dataset_cls(
+            data_files=self.config.data.val_files,
+            tokenizer=self.tokenizer,
+            processor=self.processor,
+            config=self.config.data,
+        )
+        self.val_dataloader = StatefulDataLoader(
+            dataset=self.val_dataset,
+            # Validation datasets are sent to inference engines as a whole batch,
+            # which will schedule the memory themselves.
+            batch_size=len(self.val_dataset),
+            num_workers=8,
+            shuffle=False,
+            drop_last=False,
+            collate_fn=collate_fn,
+        )
+
+        assert len(self.train_dataloader) >= 1
+        assert len(self.val_dataloader) == 1, (
+            "Validation dataloader must have a single batch,"
+            + " which inference engines will schedule the memory themselves."
+        )
+
+        print(f"Size of train dataloader: {len(self.train_dataloader)}")
+
+        # inject total_training_steps to actor/critic optim_config. This is hacky.
+        total_training_steps = len(self.train_dataloader) * self.config.trainer.total_epochs
+
+        if self.config.trainer.total_training_steps is not None:
+            total_training_steps = self.config.trainer.total_training_steps
+
+        self.total_training_steps = total_training_steps
+        print(f"Total training steps: {self.total_training_steps}")
+
+        OmegaConf.set_struct(self.config, True)
+        with open_dict(self.config):
+            self.config.actor_rollout_ref.actor.optim.total_training_steps = total_training_steps
+            self.config.critic.optim.total_training_steps = total_training_steps
 
     def fit(self):
         """
@@ -228,6 +313,9 @@ class RayDAPOTrainer(RayPPOTrainer):
                             # Align the batch
                             traj_bsz = self.config.data.train_batch_size * self.config.actor_rollout_ref.rollout.n
                             qualified_rate = len(batch) / (traj_bsz * num_gen_batches)
+                            self.batch_sampler.batch_size = (
+                                int(1 / qualified_rate + 1) * self.config.data.train_batch_size
+                            )
                             batch = batch[:traj_bsz]
 
                     # balance the number of valid tokens on each dp rank.
