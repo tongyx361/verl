@@ -16,10 +16,12 @@ FSDP PPO Trainer with Ray-based single controller.
 This trainer supports model-agonistic model initialization with huggingface
 """
 
+import itertools
 import uuid
 from collections import defaultdict
 from copy import deepcopy
 from pprint import pprint
+from typing import Iterator
 
 import numpy as np
 import torch
@@ -73,7 +75,19 @@ class RayDAPOTrainer(RayPPOTrainer):
         else:
             self.train_sampler = SequentialSampler(data_source=self.train_dataset)
 
-        self.batch_sampler = BatchSampler(
+        class DynamicBatchSampler(BatchSampler):
+            def __iter__(self) -> Iterator[list[int]]:
+                # Implemented based on the benchmarking in https://github.com/pytorch/pytorch/pull/76951
+                sampler_iter = iter(self.sampler)
+
+                batch = [*itertools.islice(sampler_iter, self.batch_size)]
+                while batch:
+                    if self.drop_last and len(batch) < self.batch_size:
+                        break
+                    yield batch
+                    batch = [*itertools.islice(sampler_iter, self.batch_size)]
+
+        self.batch_sampler = DynamicBatchSampler(
             sampler=self.train_sampler,
             batch_size=self.config.data.get("gen_batch_size", self.config.data.train_batch_size),
             drop_last=True,
