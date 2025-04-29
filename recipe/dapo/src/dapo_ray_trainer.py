@@ -43,7 +43,7 @@ from verl.trainer.ppo.ray_trainer import AdvantageEstimator, RayPPOTrainer, _tim
 from verl.utils.dataset.rl_dataset import RLHFDataset, collate_fn
 
 logger = logging.getLogger(__name__)
-logger.setLevel(os.getenv("VERL_SFT_LOGGING_LEVEL", "WARN"))
+logger.setLevel(os.getenv("VERL_PPO_LOGGING_LEVEL", "WARN"))
 
 
 class RayDAPOTrainer(RayPPOTrainer):
