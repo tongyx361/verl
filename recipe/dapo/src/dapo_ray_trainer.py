@@ -304,12 +304,15 @@ class RayDAPOTrainer(RayPPOTrainer):
 
                         prompt_bsz = self.config.data.train_batch_size
                         self.batch_sampler.batch_size = int((1 / qualified_rate + 1) * 1.5) * prompt_bsz
-
                         if num_prompt_in_batch < prompt_bsz:
                             print(f"{num_prompt_in_batch=} < {prompt_bsz=}")
                             max_num_gen_batches = self.config.algorithm.filter_groups.max_num_gen_batches
                             if max_num_gen_batches <= 0 or num_gen_batches < max_num_gen_batches:
-                                print(f"{num_gen_batches=}. Keep generating...")
+                                self.batch_sampler.batch_size -= gen_prompt_cnt
+                                print(
+                                    f"{num_gen_batches=}. Setting {self.batch_sampler.batch_size=}"
+                                    " and keep generating..."
+                                )
                                 continue
                             else:
                                 raise ValueError(
