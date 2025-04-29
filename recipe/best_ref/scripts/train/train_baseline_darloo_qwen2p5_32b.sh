@@ -3,7 +3,7 @@ set -euxo pipefail
 
 TEST=${TEST:-"0"}
 NNODES=${NNODES:-16}
-ACTOR_LR=${ACTOR_LR:-"5e-6"}
+ACTOR_LR=${ACTOR_LR:-"2e-6"}
 
 project_name='best-ref'
 
