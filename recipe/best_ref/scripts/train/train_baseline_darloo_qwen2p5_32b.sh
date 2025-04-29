@@ -34,7 +34,7 @@ val_top_p=0.7
 sp_size=8
 fsdp_size=64
 
-gen_tp=8
+gen_tp=2
 
 reward_manager=dapo
 enable_overlong_buf=True
