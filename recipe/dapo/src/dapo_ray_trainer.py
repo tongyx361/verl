@@ -404,7 +404,7 @@ class RayDAPOTrainer(RayPPOTrainer):
                     {
                         "train/num_gen_batches": num_gen_batches,
                         "train/qualified_rate": qualified_rate,
-                        "train/gen_batch_size": self.batch_sampler.batch_size,
+                        "train/gen_batch_size": len(batch_dict["input_ids"]),
                     }
                 )
                 batch = None
