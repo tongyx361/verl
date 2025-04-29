@@ -398,8 +398,15 @@ class RayDAPOTrainer(RayPPOTrainer):
                 metrics.update(compute_throughout_metrics(batch=batch, timing_raw=timing_raw, n_gpus=n_gpus))
                 timing_raw = defaultdict(float)  # clear timing
 
-                metrics["train/num_gen_batches"] = num_gen_batches
-                metrics["train/qualified_rate"] = qualified_rate
+                # metrics["train/num_gen_batches"] = num_gen_batches
+                # metrics["train/qualified_rate"] = qualified_rate
+                metrics.update(
+                    {
+                        "train/num_gen_batches": num_gen_batches,
+                        "train/qualified_rate": qualified_rate,
+                        "train/gen_batch_size": self.batch_sampler.batch_size,
+                    }
+                )
                 batch = None
                 num_prompt_in_batch = 0
                 num_gen_batches = 0
