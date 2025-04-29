@@ -17,6 +17,7 @@ This trainer supports model-agonistic model initialization with huggingface
 """
 
 import itertools
+import logging
 import uuid
 from collections import defaultdict
 from copy import deepcopy
@@ -39,6 +40,9 @@ from verl.trainer.ppo.metric_utils import (
 )
 from verl.trainer.ppo.ray_trainer import AdvantageEstimator, RayPPOTrainer, _timer, apply_kl_penalty, compute_advantage
 from verl.utils.dataset.rl_dataset import RLHFDataset, collate_fn
+
+logger = logging.getLogger(__name__)
+logger.setLevel(os.getenv("VERL_SFT_LOGGING_LEVEL", "WARN"))
 
 
 class RayDAPOTrainer(RayPPOTrainer):
@@ -82,6 +86,7 @@ class RayDAPOTrainer(RayPPOTrainer):
 
                 batch = [*itertools.islice(sampler_iter, self.batch_size)]
                 while batch:
+                    logger.debug("self.batch_size=%d, len(batch)=%d", self.batch_size, len(batch))
                     if self.drop_last and len(batch) < self.batch_size:
                         break
                     yield batch
