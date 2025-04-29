@@ -227,6 +227,7 @@ class RayDAPOTrainer(RayPPOTrainer):
                         else:
                             # Align the batch
                             traj_bsz = self.config.data.train_batch_size * self.config.actor_rollout_ref.rollout.n
+                            qualified_rate = len(batch) / (traj_bsz * num_gen_batches)
                             batch = batch[:traj_bsz]
 
                     # balance the number of valid tokens on each dp rank.
@@ -309,6 +310,7 @@ class RayDAPOTrainer(RayPPOTrainer):
                 timing_raw = defaultdict(float)  # clear timing
 
                 metrics["train/num_gen_batches"] = num_gen_batches
+                metrics["train/qualified_rate"] = qualified_rate
                 batch = None
                 num_prompt_in_batch = 0
                 num_gen_batches = 0
