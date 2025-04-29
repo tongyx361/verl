@@ -168,6 +168,7 @@ class RayDAPOTrainer(RayPPOTrainer):
         batch = None
         num_prompt_in_batch = 0
         num_gen_batches = 0
+        gen_prompt_cnt = 0
         for epoch in range(self.config.trainer.total_epochs):
             for batch_dict in self.train_dataloader:
                 metrics = {}
@@ -297,7 +298,13 @@ class RayDAPOTrainer(RayPPOTrainer):
                         new_batch = new_batch[kept_traj_idxs]
                         batch = new_batch if batch is None else DataProto.concat([batch, new_batch])
 
+                        gen_prompt_cnt += gen_bsz
+                        gen_traj_cnt = gen_prompt_cnt * self.config.actor_rollout_ref.rollout.n
+                        qualified_rate = len(batch) / gen_traj_cnt
+
                         prompt_bsz = self.config.data.train_batch_size
+                        self.batch_sampler.batch_size = int((1 / qualified_rate + 1) * 1.5) * prompt_bsz
+
                         if num_prompt_in_batch < prompt_bsz:
                             print(f"{num_prompt_in_batch=} < {prompt_bsz=}")
                             max_num_gen_batches = self.config.algorithm.filter_groups.max_num_gen_batches
@@ -313,9 +320,6 @@ class RayDAPOTrainer(RayPPOTrainer):
                         else:
                             # Align the batch
                             traj_bsz = prompt_bsz * self.config.actor_rollout_ref.rollout.n
-                            gen_traj_bsz = gen_bsz * self.config.actor_rollout_ref.rollout.n
-                            qualified_rate = len(batch) / (gen_traj_bsz * num_gen_batches)
-                            self.batch_sampler.batch_size = int(1 / qualified_rate + 1) * prompt_bsz
                             batch = batch[:traj_bsz]
 
                     # balance the number of valid tokens on each dp rank.
@@ -401,7 +405,7 @@ class RayDAPOTrainer(RayPPOTrainer):
                     {
                         "train/num_gen_batches": num_gen_batches,
                         "train/qualified_rate": qualified_rate,
-                        "train/gen_batch_size": gen_bsz,
+                        "train/gen_prompt_cnt": gen_prompt_cnt,
                     }
                 )
                 batch = None
