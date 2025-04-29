@@ -173,6 +173,7 @@ class RayDAPOTrainer(RayPPOTrainer):
                 metrics = {}
 
                 new_batch: DataProto = DataProto.from_single_dict(batch_dict)
+                gen_bsz = len(new_batch)
                 num_gen_batches += 1
                 # pop those keys for generation
                 if "multi_modal_inputs" in new_batch.non_tensor_batch.keys():
@@ -312,7 +313,7 @@ class RayDAPOTrainer(RayPPOTrainer):
                         else:
                             # Align the batch
                             traj_bsz = prompt_bsz * self.config.actor_rollout_ref.rollout.n
-                            gen_traj_bsz = self.batch_sampler.batch_size * self.config.actor_rollout_ref.rollout.n
+                            gen_traj_bsz = gen_bsz * self.config.actor_rollout_ref.rollout.n
                             qualified_rate = len(batch) / (gen_traj_bsz * num_gen_batches)
                             self.batch_sampler.batch_size = int(1 / qualified_rate + 1) * prompt_bsz
                             batch = batch[:traj_bsz]
@@ -400,7 +401,7 @@ class RayDAPOTrainer(RayPPOTrainer):
                     {
                         "train/num_gen_batches": num_gen_batches,
                         "train/qualified_rate": qualified_rate,
-                        "train/gen_batch_size": len(batch_dict["input_ids"]),
+                        "train/gen_batch_size": gen_bsz,
                     }
                 )
                 batch = None
