@@ -16,7 +16,9 @@ FSDP PPO Trainer with Ray-based single controller.
 This trainer supports model-agonistic model initialization with huggingface
 """
 
+import logging
 import os
+import shutil
 import uuid
 from collections import defaultdict
 from contextlib import contextmanager
@@ -56,6 +58,10 @@ from verl.utils.torch_functional import masked_mean
 from verl.utils.tracking import ValidationGenerationsLogger
 
 WorkerType = Type[Worker]
+
+
+logger = logging.getLogger(__file__)
+logger.setLevel(os.getenv("VERL_SFT_LOGGING_LEVEL", "WARN"))
 
 
 class Role(Enum):
@@ -250,7 +256,7 @@ def compute_advantage(data: DataProto, adv_estimator, gamma=1.0, lam=1.0, num_re
 
 @contextmanager
 def _timer(name: str, timing_raw: Dict[str, float]):
-    with Timer(name=name, logger=print, initial_text=True) as timer:
+    with Timer(name=name, logger=logger.debug, initial_text=True) as timer:
         yield
     if name not in timing_raw:
         timing_raw[name] = 0
