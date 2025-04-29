@@ -34,7 +34,7 @@ val_top_p=0.7
 sp_size=8
 fsdp_size=8
 
-gen_tp=2
+gen_tp=1
 
 reward_manager=dapo
 enable_overlong_buf=True
@@ -54,7 +54,9 @@ if [ "${TEST}" != "1" ]; then
     n_trajs_per_prompt=16
     ppo_mini_batch_size=$((train_batch_size / num_updates_per_batch))
     val_n=32
+    val_before_train=True
     resume_mode=auto
+    save_freq=5
 else
     max_prompt_length=$((1024 * 2))
     overlong_buf_len=$((1024 * 1))
@@ -66,10 +68,12 @@ else
     gen_batch_size=$((train_batch_size * 2))
     exp_name="${exp_name}-test"
     val_n=1
+    val_before_train=False
     resume_mode=disable
+    save_freq=-1
 fi
 
-
+test_freq=${save_freq}
 
 # Ray
 RAY_ADDRESS=${RAY_ADDRESS:-"http://localhost:8265"}
@@ -78,7 +82,7 @@ RUNTIME_ENV=${RUNTIME_ENV:-"${WORKING_DIR}/verl/trainer/runtime_env.yaml"}
 # Paths
 RAY_DATA_HOME=${RAY_DATA_HOME:-${VERL_HOME:-"${HOME}/verl"}}
 MODEL_HOME=${MODEL_HOME:-"${RAY_DATA_HOME}/models"}
-MODEL_PATH=${MODEL_PATH:-"${MODEL_HOME}/Qwen2.5-32B"}
+MODEL_PATH=${MODEL_PATH:-"${MODEL_HOME}/Qwen3-8B"}
 CKPTS_DIR=${CKPTS_DIR:-"${RAY_DATA_HOME}/ckpts/${project_name}/${exp_name}"}
 TRAIN_FILE=${TRAIN_FILE:-"${RAY_DATA_HOME}/data/dapo-math-unique-clean-17k.parquet"}
 TEST_FILE=${TEST_FILE:-"${RAY_DATA_HOME}/data/aime-2024-clean.parquet"}
@@ -146,7 +150,7 @@ ray job submit --no-wait --runtime-env="${RUNTIME_ENV}" \
     actor_rollout_ref.actor.grad_clip=${grad_clip} \
     actor_rollout_ref.actor.use_kl_loss=${use_kl_loss} \
     actor_rollout_ref.actor.ulysses_sequence_parallel_size=${sp_size} \
-    actor_rollout_ref.rollout.gpu_memory_utilization=0.7 \
+    actor_rollout_ref.rollout.gpu_memory_utilization=0.9 \
     actor_rollout_ref.rollout.tensor_model_parallel_size=${gen_tp} \
     actor_rollout_ref.ref.fsdp_config.param_offload=${offload} \
     actor_rollout_ref.ref.ulysses_sequence_parallel_size=${sp_size} \
@@ -167,6 +171,7 @@ ray job submit --no-wait --runtime-env="${RUNTIME_ENV}" \
     trainer.n_gpus_per_node=${n_procs_per_node} \
     trainer.nnodes="${NNODES}" \
     trainer.save_freq=${save_freq} \
+    trainer.val_before_train=${val_before_train} \
     trainer.test_freq=${test_freq} \
     trainer.total_epochs=${total_epochs} \
     trainer.default_local_dir="${CKPTS_DIR}" \
