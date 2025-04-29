@@ -194,6 +194,7 @@ class RayDAPOTrainer(RayPPOTrainer):
                 metrics = {}
 
                 new_batch: DataProto = DataProto.from_single_dict(batch_dict)
+                logger.debug("len(new_batch)=%d", len(new_batch))
                 gen_bsz = len(new_batch)
                 num_gen_batches += 1
                 # pop those keys for generation
