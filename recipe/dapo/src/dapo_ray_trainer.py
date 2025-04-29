@@ -81,17 +81,11 @@ class RayDAPOTrainer(RayPPOTrainer):
             self.train_sampler = SequentialSampler(data_source=self.train_dataset)
 
         class DynamicBatchSampler(BatchSampler):
-            def __init__(self, sampler, batch_size, drop_last):
-                super().__init__(sampler, batch_size, drop_last)
-                self._sampler_iter = None
-                self._batch_size_changed = False
-
             def __iter__(self) -> Iterator[list[int]]:
-                # Store the iterator so we can reset if needed
-                self._sampler_iter = iter(self.sampler)
                 while True:
                     # Get up to batch_size indices
-                    batch = [*itertools.islice(self._sampler_iter, self.batch_size)]
+                    batch = [*itertools.islice(self.sampler, self.batch_size)]
+                    logger.debug("self.batch_size=%d, len(batch)=%d", self.batch_size, len(batch))
 
                     # If we didn't get any indices, we're done
                     if not batch:
@@ -101,25 +95,7 @@ class RayDAPOTrainer(RayPPOTrainer):
                     if self.drop_last and len(batch) < self.batch_size:
                         break
 
-                    logger.debug("self.batch_size=%d, len(batch)=%d", self.batch_size, len(batch))
                     yield batch
-
-                    # Check if batch size was changed
-                    if self._batch_size_changed:
-                        self._batch_size_changed = False
-                        # No need to reset iterator - we'll just use the new batch size for next batch
-
-            def reset(self):
-                """Reset the sampler iterator to start from beginning"""
-                self._sampler_iter = iter(self.sampler)
-
-            def set_batch_size(self, batch_size):
-                """Set a new batch size and mark that it changed"""
-                if batch_size != self.batch_size:
-                    self.batch_size = batch_size
-                    self._batch_size_changed = True
-                    return True
-                return False
 
         self.batch_sampler = DynamicBatchSampler(
             sampler=self.train_sampler,
@@ -133,23 +109,6 @@ class RayDAPOTrainer(RayPPOTrainer):
             num_workers=8,
             collate_fn=collate_fn,
         )
-
-        # Add a reset method to properly handle dynamic batch size changes
-        def reset_dataloader():
-            """Reset the dataloader to reflect batch size changes"""
-            state_dict = self.train_dataloader.state_dict()
-            self.train_dataloader = StatefulDataLoader(
-                dataset=self.train_dataset,
-                batch_sampler=self.batch_sampler,
-                num_workers=8,
-                collate_fn=collate_fn,
-            )
-            # Only load state if we had started iterating
-            if state_dict.get("num_samples_yielded", 0) > 0:
-                self.train_dataloader.load_state_dict(state_dict)
-
-        # Attach the reset method to the dataloader for easier access
-        self.train_dataloader.reset = reset_dataloader
 
         self.val_dataset = dataset_cls(
             data_files=self.config.data.val_files,
@@ -236,6 +195,8 @@ class RayDAPOTrainer(RayPPOTrainer):
         gen_prompt_cnt = 0
         for epoch in range(self.config.trainer.total_epochs):
             for batch_dict in self.train_dataloader:
+                data_state = self.train_dataloader.state_dict()
+                print(f"{data_state=}")
                 metrics = {}
 
                 new_batch: DataProto = DataProto.from_single_dict(batch_dict)
@@ -369,22 +330,15 @@ class RayDAPOTrainer(RayPPOTrainer):
                         qualified_rate = len(batch) / gen_traj_cnt
 
                         prompt_bsz = self.config.data.train_batch_size
-                        # Use the new set_batch_size method instead of direct assignment
-                        new_batch_size = int((1 / qualified_rate + 1) * 1.5) * prompt_bsz
-                        self.batch_sampler.set_batch_size(new_batch_size)
+                        needed_gen_bsz = int((1 / qualified_rate + 1) * 1.5) * prompt_bsz
                         if num_prompt_in_batch < prompt_bsz:
                             print(f"{num_prompt_in_batch=} < {prompt_bsz=}")
                             max_num_gen_batches = self.config.algorithm.filter_groups.max_num_gen_batches
                             if max_num_gen_batches <= 0 or num_gen_batches < max_num_gen_batches:
-                                # Use the new set_batch_size method instead of direct subtraction
-                                adjusted_batch_size = new_batch_size - gen_prompt_cnt
-                                self.batch_sampler.set_batch_size(adjusted_batch_size)
-                                # Reset both the sampler iterator and the dataloader
-                                self.batch_sampler.reset()
-                                self.train_dataloader.reset()
+                                remaining_gen_bsz = needed_gen_bsz - gen_prompt_cnt
+                                self.batch_sampler.batch_size = remaining_gen_bsz
                                 print(
-                                    f"{num_gen_batches=}. Setting batch_size={adjusted_batch_size}"
-                                    " and keep generating..."
+                                    f"{num_gen_batches=}. Setting batch_size={remaining_gen_bsz} and keep generating..."
                                 )
                                 continue
                             else:
@@ -397,11 +351,7 @@ class RayDAPOTrainer(RayPPOTrainer):
                             # Align the batch
                             traj_bsz = prompt_bsz * self.config.actor_rollout_ref.rollout.n
                             batch = batch[:traj_bsz]
-
-                            self.batch_sampler.set_batch_size(new_batch_size)
-                            # Reset both the sampler iterator and the dataloader
-                            self.batch_sampler.reset()
-                            self.train_dataloader.reset()
+                            self.batch_sampler.batch_size = needed_gen_bsz
 
                     # balance the number of valid tokens on each dp rank.
                     # Note that this breaks the order of data inside the batch.
