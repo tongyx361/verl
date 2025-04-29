@@ -54,6 +54,7 @@ if [ "${TEST}" != "1" ]; then
     n_trajs_per_prompt=16
     ppo_mini_batch_size=$((train_batch_size / num_updates_per_batch))
     val_n=32
+    val_before_train=True
     resume_mode=auto
 else
     max_prompt_length=$((1024 * 2))
@@ -66,6 +67,7 @@ else
     gen_batch_size=$((train_batch_size * 2))
     exp_name="${exp_name}-test"
     val_n=1
+    val_before_train=False
     resume_mode=disable
 fi
 
@@ -167,6 +169,7 @@ ray job submit --no-wait --runtime-env="${RUNTIME_ENV}" \
     trainer.n_gpus_per_node=${n_procs_per_node} \
     trainer.nnodes="${NNODES}" \
     trainer.save_freq=${save_freq} \
+    trainer.val_before_train=${val_before_train} \
     trainer.test_freq=${test_freq} \
     trainer.total_epochs=${total_epochs} \
     trainer.default_local_dir="${CKPTS_DIR}" \
