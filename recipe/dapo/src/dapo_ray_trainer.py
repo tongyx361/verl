@@ -82,9 +82,10 @@ class RayDAPOTrainer(RayPPOTrainer):
 
         class DynamicBatchSampler(BatchSampler):
             def __iter__(self) -> Iterator[list[int]]:
+                sampler_iter = iter(self.sampler)
                 while True:
                     # Get up to batch_size indices
-                    batch = [*itertools.islice(self.sampler, self.batch_size)]
+                    batch = [*itertools.islice(sampler_iter, self.batch_size)]
                     logger.debug("self.batch_size=%d, len(batch)=%d", self.batch_size, len(batch))
 
                     # If we didn't get any indices, we're done
