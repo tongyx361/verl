@@ -132,7 +132,7 @@ class RayDAPOTrainer(RayPPOTrainer):
                 #     f"<= {int(estim_num_remaining_prompt_needed*self.config.data.oversampling_factor)=}?",
                 # )
                 logger.info(
-                    "[%d/%d] %d <= %d?",
+                    "[update:%d/gen:%d] # of Prompts to Gen. (%d) <= # of Remaining Prompts Needed (%d)?",
                     self.global_steps,
                     updating_state.gen_round_cnt,
                     len(prompt_batch),
@@ -278,7 +278,7 @@ class RayDAPOTrainer(RayPPOTrainer):
                         traj_bsz = prompt_bsz * self.config.actor_rollout_ref.rollout.n
                         if len(updating_state.batch) < traj_bsz:
                             logger.info(
-                                "[%d/%d] %d < %d. Keep generating...",
+                                "[update:%d/gen:%d] # of Traj. (%d) < Traj. Batch Size (%d). Keep generating...",
                                 self.global_steps,
                                 updating_state.gen_round_cnt,
                                 len(updating_state.batch),
