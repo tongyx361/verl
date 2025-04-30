@@ -36,7 +36,14 @@ from verl.trainer.ppo.metric_utils import (
     compute_timing_metrics,
     reduce_metrics,
 )
-from verl.trainer.ppo.ray_trainer import AdvantageEstimator, RayPPOTrainer, _timer, apply_kl_penalty, compute_advantage
+from verl.trainer.ppo.ray_trainer import (
+    AdvantageEstimator,
+    RayPPOTrainer,
+    _timer,
+    apply_kl_penalty,
+    compute_advantage,
+    compute_response_mask,
+)
 
 logger = logging.getLogger(__name__)
 logger.setLevel(os.getenv("VERL_PPO_LOGGING_LEVEL", "WARN"))
@@ -275,15 +282,9 @@ class RayDAPOTrainer(RayPPOTrainer):
                             else new_batch
                         )
                         if self.config.data.dynamic_max_resp_len.enable:
-                            resp_lens = updating_state.batch.batch["response_mask"].sum(dim=-1)
-                            max_non_truncated_resp_len = (
-                                resp_lens[resp_lens < self.config.data.max_response_length].max().item()
-                            )
-                            logger.info(
-                                "[update:%d] Max non-truncated response length: %d",
-                                self.global_steps,
-                                max_non_truncated_resp_len,
-                            )
+                            response_mask = compute_response_mask(updating_state.batch)
+                            resp_lens = response_mask.sum(dim=-1)
+                            max_non_truncated_resp_len = resp_lens[resp_lens < resp_lens.max()].max().item()
                             self.config.data.max_response_length = int(
                                 max_non_truncated_resp_len
                                 * (1 + self.config.data.dynamic_max_resp_len.extending_tolerance)
