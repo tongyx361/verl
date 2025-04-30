@@ -111,7 +111,6 @@ class RayDAPOTrainer(RayPPOTrainer):
                     if prompt_batch is not None
                     else DataProto.from_single_dict(batch_dict)
                 )
-                gen_bsz = len(prompt_batch)
 
                 prompt_bsz = self.config.data.train_batch_size
                 if updating_state.qualified_rate > 0 and (
@@ -249,7 +248,7 @@ class RayDAPOTrainer(RayPPOTrainer):
                             else DataProto.concat([updating_state.batch, new_batch])
                         )
 
-                        updating_state.gen_prompt_cnt += gen_bsz
+                        updating_state.gen_prompt_cnt += len(prompt_batch)
 
                         # Ceiling
                         updating_state.gen_traj_cnt += len(new_batch)
