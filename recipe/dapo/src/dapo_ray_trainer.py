@@ -107,10 +107,12 @@ class RayDAPOTrainer(RayPPOTrainer):
                 print(f"{data_state=}")
 
                 print(f"{prompt_batch=}")
-                print(f"{batch_dict=}")
+                # print(f"{batch_dict=}")
                 new_prompt_batch = DataProto.from_single_dict(batch_dict)
-                print(f"{new_prompt_batch=}")
-                prompt_batch = prompt_batch.concat(new_prompt_batch) if prompt_batch is not None else new_prompt_batch
+                # print(f"{new_prompt_batch=}")
+                prompt_batch = (
+                    DataProto.concat([prompt_batch, new_prompt_batch]) if prompt_batch is not None else new_prompt_batch
+                )
 
                 prompt_bsz = self.config.data.train_batch_size
                 estim_num_prompt_needed = (
