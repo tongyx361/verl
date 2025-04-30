@@ -113,7 +113,7 @@ class RayDAPOTrainer(RayPPOTrainer):
         for epoch in range(self.config.trainer.total_epochs):
             for batch_dict in self.train_dataloader:
                 data_state = self.train_dataloader.state_dict()
-                print(f"{data_state=}")
+                logger.debug("%s", f"{data_state=}")
 
                 new_prompt_batch = DataProto.from_single_dict(batch_dict)
 
@@ -126,13 +126,20 @@ class RayDAPOTrainer(RayPPOTrainer):
                     -int(-1 / updating_state.qualified_rate) * prompt_bsz if updating_state.qualified_rate > 0 else 0
                 )
                 estim_num_remaining_prompt_needed = estim_num_prompt_needed - updating_state.gen_prompt_cnt
-                print(
-                    f"[{self.global_steps}/{updating_state.gen_round_cnt}]"
-                    f" {len(prompt_batch)=} "
-                    f"<= {int(estim_num_remaining_prompt_needed*self.config.data.oversampling_factor)=}?"
+                # logger.info(
+                #     f"[{self.global_steps}/{updating_state.gen_round_cnt}]"
+                #     f" {len(prompt_batch)=} "
+                #     f"<= {int(estim_num_remaining_prompt_needed*self.config.data.oversampling_factor)=}?",
+                # )
+                logger.info(
+                    "[%d/%d] %d <= %d?",
+                    self.global_steps,
+                    updating_state.gen_round_cnt,
+                    len(prompt_batch),
+                    int(estim_num_remaining_prompt_needed * self.config.data.oversampling_factor),
                 )
                 if len(prompt_batch) <= int(estim_num_remaining_prompt_needed * self.config.data.oversampling_factor):
-                    print("Keep loading...")
+                    logger.info("Keep loading...")
                     continue
 
                 updating_state.gen_prompt_cnt += len(prompt_batch)
@@ -205,7 +212,7 @@ class RayDAPOTrainer(RayPPOTrainer):
 
                         new_batch.batch["token_level_scores"] = reward_tensor
 
-                        print(f"{list(reward_extra_infos_dict.keys())=}")
+                        logger.info("%s", f"{list(reward_extra_infos_dict.keys())=}")
                         if reward_extra_infos_dict:
                             new_batch.non_tensor_batch.update(
                                 {k: np.array(v) for k, v in reward_extra_infos_dict.items()}
@@ -270,10 +277,12 @@ class RayDAPOTrainer(RayPPOTrainer):
                         updating_state.qualified_rate = len(updating_state.batch) / updating_state.gen_traj_cnt
                         traj_bsz = prompt_bsz * self.config.actor_rollout_ref.rollout.n
                         if len(updating_state.batch) < traj_bsz:
-                            print(
-                                f"[{self.global_steps}/{updating_state.gen_round_cnt}]"
-                                f" {len(updating_state.batch)=} < {traj_bsz=}."
-                                " Keep generating..."
+                            logger.info(
+                                "[%d/%d] %d < %d. Keep generating...",
+                                self.global_steps,
+                                updating_state.gen_round_cnt,
+                                len(updating_state.batch),
+                                traj_bsz,
                             )
                             continue
                         else:  # Align the batch
