@@ -287,8 +287,6 @@ class RayDAPOTrainer(RayPPOTrainer):
                                 len(updating_state.batch),
                                 traj_bsz,
                             )
-                            continue
-                        else:  # Align the batch
                             if self.config.data.dynamic_max_resp_len.enable:
                                 resp_lens = updating_state.batch.batch["response_mask"].sum(dim=-1)
                                 max_non_truncated_resp_len = (
@@ -303,7 +301,8 @@ class RayDAPOTrainer(RayPPOTrainer):
                                     max_non_truncated_resp_len
                                     * (1 + self.config.data.dynamic_max_resp_len.extending_tolerance)
                                 )
-
+                            continue
+                        else:  # Align the batch
                             updating_state.batch = updating_state.batch[:traj_bsz]
 
                     assert updating_state.batch is not None
