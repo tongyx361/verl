@@ -12,7 +12,7 @@ project_name='best-ref'
 n_procs_per_node=8
 num_procs=$((NNODES * n_procs_per_node))
 
-exp_name="darloo-qwen2p5-32b-lr${ACTOR_LR}-${num_procs}gpus"
+exp_name="darloo-qwen2p5-32b-lr${ACTOR_LR}-bs${TRAIN_BSZ}-nup${N_UPDATES_PER_BATCH}-${num_procs}gpus"
 
 adv_estimator=rloo
 # Clip epsilons
