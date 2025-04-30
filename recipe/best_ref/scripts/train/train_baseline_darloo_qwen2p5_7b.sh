@@ -4,13 +4,16 @@ set -euxo pipefail
 TEST=${TEST:-"0"}
 NNODES=${NNODES:-16}
 ACTOR_LR=${ACTOR_LR:-"4e-6"}
+TRAIN_BSZ=${TRAIN_BSZ:-"512"}
+N_UPDATES_PER_BATCH=${N_UPDATES_PER_BATCH:-"16"}
+VAL_BEFORE_TRAIN=${VAL_BEFORE_TRAIN:-"True"}
 
 project_name='best-ref'
 
 n_procs_per_node=8
 num_procs=$((NNODES * n_procs_per_node))
 
-exp_name="darloo-qwen2p5-7b-lr${ACTOR_LR}-${num_procs}gpus"
+exp_name="darloo-qwen2p5-7b-lr${ACTOR_LR}-bs${TRAIN_BSZ}-nup${N_UPDATES_PER_BATCH}-${num_procs}gpus"
 
 adv_estimator=rloo
 # Clip epsilons
@@ -48,12 +51,9 @@ if [ "${TEST}" != "1" ]; then
     max_prompt_length=$((1024 * 2))
     overlong_buf_len=$((1024 * 4))
     max_response_length=$((1024 * 16 + overlong_buf_len))
-    train_batch_size=512
-    num_updates_per_batch=16
     n_trajs_per_prompt=16
-    ppo_mini_batch_size=$((train_batch_size / num_updates_per_batch))
+    ppo_mini_batch_size=$((TRAIN_BSZ / N_UPDATES_PER_BATCH))
     val_n=32
-    val_before_train=True
     resume_mode=auto
     save_freq=5
 else
@@ -62,11 +62,11 @@ else
     max_response_length=$((1024 * 1 + overlong_buf_len))
     n_trajs_per_prompt=2
     ppo_mini_batch_size=$((num_procs / n_trajs_per_prompt))
-    num_updates_per_batch=2
-    train_batch_size=$((ppo_mini_batch_size * num_updates_per_batch))
+    N_UPDATES_PER_BATCH=2
+    TRAIN_BSZ=$((ppo_mini_batch_size * N_UPDATES_PER_BATCH))
     exp_name="${exp_name}-test"
     val_n=1
-    val_before_train=False
+    VAL_BEFORE_TRAIN=False
     resume_mode=disable
     save_freq=-1
 fi
@@ -110,7 +110,7 @@ ray job submit --no-wait --runtime-env="${RUNTIME_ENV}" \
     data.truncation='error' \
     data.max_prompt_length=${max_prompt_length} \
     data.max_response_length=${max_response_length} \
-    data.train_batch_size=${train_batch_size} \
+    data.train_batch_size="${TRAIN_BSZ}" \
     reward_model.reward_manager=${reward_manager} \
     reward_model.overlong_buffer.enable=${enable_overlong_buf} \
     reward_model.overlong_buffer.len=${overlong_buf_len} \
@@ -168,7 +168,7 @@ ray job submit --no-wait --runtime-env="${RUNTIME_ENV}" \
     trainer.n_gpus_per_node=${n_procs_per_node} \
     trainer.nnodes="${NNODES}" \
     trainer.save_freq=${save_freq} \
-    trainer.val_before_train=${val_before_train} \
+    trainer.val_before_train="${VAL_BEFORE_TRAIN}" \
     trainer.test_freq=${test_freq} \
     trainer.total_epochs=${total_epochs} \
     trainer.default_local_dir="${CKPTS_DIR}" \
