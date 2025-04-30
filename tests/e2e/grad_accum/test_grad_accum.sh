@@ -3,7 +3,6 @@ set -xeuo pipefail
 
 MODEL_ID=${MODEL_ID:-Qwen/Qwen2.5-0.5B}
 MODEL_PATH=${MODEL_PATH:-${HOME}/models/${MODEL_ID}}
-huggingface-cli download "${MODEL_ID}" --local-dir "${MODEL_PATH}"
 
 TRAIN_FILES=${TRAIN_FILES:-$HOME/data/gsm8k/train.parquet}
 VAL_FILES=${VAL_FILES:-$HOME/data/gsm8k/test.parquet}
@@ -35,6 +34,13 @@ train_prompt_mini_bsz=$((train_traj_mini_bsz * n_resp_per_prompt)) # 2 * b * n /
 train_prompt_bsz=$((train_prompt_mini_bsz * 2)) # 4 * b * n / g
 
 exp_name="$(basename "${MODEL_ID,,}")-test-grad-accum"
+
+huggingface-cli download "${MODEL_ID}" --local-dir "${MODEL_PATH}"
+
+if [ ! -f "${TRAIN_FILES}" ] || [ ! -f "${VAL_FILES}" ]; then
+    echo "Downloading the GSM8K dataset..."
+    python examples/data_preprocess/gsm8k.py
+fi
 
 python3 -m tests.e2e.grad_accum.test_grad_accum \
     algorithm.adv_estimator="${ADV_ESTIMATOR}" \
