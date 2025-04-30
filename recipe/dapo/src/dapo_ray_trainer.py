@@ -128,7 +128,7 @@ class RayDAPOTrainer(RayPPOTrainer):
                 estim_num_remaining_prompt_needed = estim_num_prompt_needed - updating_state.gen_prompt_cnt
                 print(f"{len(prompt_batch)=} <= {estim_num_remaining_prompt_needed*2=}?")
                 if len(prompt_batch) <= estim_num_remaining_prompt_needed * 2:
-                    print("Keep loading...")
+                    print(f"[{self.global_steps}/{updating_state.gen_round_cnt}] Keep loading...")
                     continue
 
                 updating_state.gen_prompt_cnt += len(prompt_batch)
@@ -266,7 +266,11 @@ class RayDAPOTrainer(RayPPOTrainer):
                         updating_state.qualified_rate = len(updating_state.batch) / updating_state.gen_traj_cnt
                         traj_bsz = prompt_bsz * self.config.actor_rollout_ref.rollout.n
                         if len(updating_state.batch) < traj_bsz:
-                            print(f"{len(updating_state.batch)=} < {traj_bsz=}. Keep generating...")
+                            print(
+                                f"[{self.global_steps}/{updating_state.gen_round_cnt}]"
+                                f" {len(updating_state.batch)=} < {traj_bsz=}."
+                                " Keep generating..."
+                            )
                             continue
                         else:  # Align the batch
                             updating_state.batch = updating_state.batch[:traj_bsz]
