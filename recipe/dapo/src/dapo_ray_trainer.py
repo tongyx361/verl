@@ -54,10 +54,12 @@ class UpdatingState:
     gen_round_cnt: int = 0
     gen_prompt_cnt: int = 0
     gen_traj_cnt: int = 0
-    qualified_rate: float = 0.0
     batch: Optional[DataProto] = None
     timing_raw: dict[str, float] = field(default_factory=lambda: defaultdict(float))
     metrics: dict[str, float] = field(default_factory=lambda: defaultdict(float))
+    # Leaving for the next generation stage
+    qualified_rate: float = 0.0
+    max_tokens: int = 0
 
     def reset(self):
         self.gen_round_cnt = 0
@@ -116,7 +118,7 @@ class RayDAPOTrainer(RayPPOTrainer):
         self.global_steps += 1
         last_val_metrics = None
 
-        updating_state = UpdatingState()
+        updating_state = UpdatingState(max_tokens=self.config.actor_rollout_ref.rollout.max_tokens)
         # Generation-level state
         prompt_batch = None
 
@@ -172,13 +174,17 @@ class RayDAPOTrainer(RayPPOTrainer):
                 with _timer("step", updating_state.timing_raw):
                     # generate a batch
                     with _timer("gen", updating_state.timing_raw):
-                        gen_batch_output = self.actor_rollout_wg.generate_sequences(gen_batch)
+                        gen_batch_output = self.actor_rollout_wg.generate_sequences(
+                            gen_batch, updating_state.max_tokens
+                        )
 
                     if self.config.algorithm.adv_estimator == AdvantageEstimator.REMAX:
                         with _timer("gen_max", updating_state.timing_raw):
                             gen_baseline_batch = deepcopy(gen_batch)
                             gen_baseline_batch.meta_info["do_sample"] = False
-                            gen_baseline_output = self.actor_rollout_wg.generate_sequences(gen_baseline_batch)
+                            gen_baseline_output = self.actor_rollout_wg.generate_sequences(
+                                gen_baseline_batch, updating_state.max_tokens
+                            )
 
                             prompt_batch = prompt_batch.union(gen_baseline_output)
                             reward_baseline_tensor = self.reward_fn(prompt_batch)
@@ -291,7 +297,7 @@ class RayDAPOTrainer(RayPPOTrainer):
                                 updating_state.gen_round_cnt,
                                 max_non_truncated_resp_len,
                             )
-                            self.config.data.max_response_length = int(
+                            updating_state.max_tokens = int(
                                 max_non_truncated_resp_len
                                 * (1 + self.config.data.dynamic_max_resp_len.extending_tolerance)
                             )

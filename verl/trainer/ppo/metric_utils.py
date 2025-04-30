@@ -116,9 +116,9 @@ def compute_data_metrics(batch: DataProto, use_critic: bool = True) -> Dict[str,
         .detach()
         .item(),
         # non-truncated response length
-        "non_truncated_response_length/mean": torch.mean(non_truncated_resp_lens).detach().item(),
-        "non_truncated_response_length/max": torch.max(non_truncated_resp_lens).detach().item(),
-        "non_truncated_response_length/min": torch.min(non_truncated_resp_lens).detach().item(),
+        "non_truncated_response_length/mean": torch.mean(non_truncated_resp_lens.float()).detach().item(),
+        "non_truncated_response_length/max": torch.max(non_truncated_resp_lens.float()).detach().item(),
+        "non_truncated_response_length/min": torch.min(non_truncated_resp_lens.float()).detach().item(),
         # prompt length
         "prompt_length/mean": torch.mean(prompt_length).detach().item(),
         "prompt_length/max": torch.max(prompt_length).detach().item(),
