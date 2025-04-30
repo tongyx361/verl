@@ -164,6 +164,7 @@ class RayDAPOTrainer(RayPPOTrainer):
                     new_batch = prompt_batch.repeat(
                         repeat_times=self.config.actor_rollout_ref.rollout.n, interleave=True
                     )
+                    prompt_batch = None
                     new_batch = new_batch.union(gen_batch_output)
 
                     with _timer("reward", updating_state.timing_raw):
