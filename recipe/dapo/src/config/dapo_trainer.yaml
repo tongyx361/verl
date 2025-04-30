@@ -8,6 +8,7 @@ defaults:
   - _self_
 
 data:
+  oversampling_factor: 1.5
   repeat:
     factor: null # Set to `null` to disable repeating
     shuffle_seed: ${seed} # Set to a negative number to disable shuffling
