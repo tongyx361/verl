@@ -21,7 +21,7 @@ import os
 import uuid
 from collections import defaultdict
 from copy import deepcopy
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pprint import pprint
 from typing import Optional
 
@@ -49,8 +49,8 @@ class UpdatingState:
     gen_traj_cnt: int = 0
     qualified_rate: float = 0.0
     batch: Optional[DataProto] = None
-    timing_raw: dict[str, float] = defaultdict(float)
-    metrics: dict[str, float] = defaultdict(float)
+    timing_raw: dict[str, float] = field(default_factory=lambda: defaultdict(float))
+    metrics: dict[str, float] = field(default_factory=lambda: defaultdict(float))
 
 
 class RayDAPOTrainer(RayPPOTrainer):
