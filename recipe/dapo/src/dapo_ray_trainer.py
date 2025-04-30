@@ -113,10 +113,13 @@ class RayDAPOTrainer(RayPPOTrainer):
                 )
 
                 prompt_bsz = self.config.data.train_batch_size
-                if updating_state.qualified_rate > 0 and (
-                    len(prompt_batch) + updating_state.gen_prompt_cnt
-                    <= -int(-1 / updating_state.qualified_rate) * prompt_bsz
-                ):  # Ceiling + at least one batch more for tolerance
+                estim_num_prompt_needed = (
+                    -int(-1 / updating_state.qualified_rate) * prompt_bsz if updating_state.qualified_rate > 0 else 0
+                )
+                updating_state.gen_prompt_cnt += len(prompt_batch)
+                # Ceiling + at least one batch more for tolerance
+                if updating_state.gen_prompt_cnt <= estim_num_prompt_needed:
+                    print(f"{updating_state.gen_prompt_cnt=} <= {estim_num_prompt_needed=}. Keep loading...")
                     continue
 
                 updating_state.gen_round_cnt += 1
@@ -163,7 +166,6 @@ class RayDAPOTrainer(RayPPOTrainer):
                     new_batch = prompt_batch.repeat(
                         repeat_times=self.config.actor_rollout_ref.rollout.n, interleave=True
                     )
-                    updating_state.gen_prompt_cnt += len(prompt_batch)
                     prompt_batch = None
                     new_batch = new_batch.union(gen_batch_output)
 
