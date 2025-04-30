@@ -56,7 +56,7 @@ from verl.trainer.ppo.reward import compute_reward, compute_reward_async
 from verl.utils.checkpoint.checkpoint_manager import find_latest_ckpt_path
 from verl.utils.dataset.rl_dataset import RLHFDataset, collate_fn
 from verl.utils.seqlen_balancing import get_seqlen_balanced_partitions, log_seqlen_unbalance
-from verl.utils.torch_functional import masked_mean
+from verl.utils.torch_functional import calc_mini_batch_loss_token_nums, masked_mean
 from verl.utils.tracking import ValidationGenerationsLogger
 from verl.workers.rollout.async_server import AsyncLLMServerManager
 
@@ -949,6 +949,14 @@ class RayPPOTrainer:
 
                     # compute global_valid tokens
                     batch.meta_info["global_token_num"] = torch.sum(batch.batch["attention_mask"], dim=-1).tolist()
+
+                    traj_mini_bsz = self.config.actor_rollout_ref.actor.ppo_mini_batch_size * self.config.actor_rollout_ref.rollout.n
+                    batch.meta_info["mini_batch_loss_token_nums"] = calc_mini_batch_loss_token_nums(
+                        response_ids=batch.batch["responses"],
+                        attention_mask=batch.batch["attention_mask"],
+                        traj_mini_bsz=traj_mini_bsz,
+                        num_dp_ranks=self.actor_rollout_wg.world_size,
+                    )
 
                     with _timer("reward", timing_raw):
                         # compute reward model score
