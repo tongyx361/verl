@@ -126,9 +126,12 @@ class RayDAPOTrainer(RayPPOTrainer):
                     -int(-1 / updating_state.qualified_rate) * prompt_bsz if updating_state.qualified_rate > 0 else 0
                 )
                 estim_num_remaining_prompt_needed = estim_num_prompt_needed - updating_state.gen_prompt_cnt
-                print(f"{len(prompt_batch)=} <= {estim_num_remaining_prompt_needed*2=}?")
+                print(
+                    f"[{self.global_steps}/{updating_state.gen_round_cnt}]"
+                    f" {len(prompt_batch)=} <= {estim_num_remaining_prompt_needed*2=}?"
+                )
                 if len(prompt_batch) <= estim_num_remaining_prompt_needed * 2:
-                    print(f"[{self.global_steps}/{updating_state.gen_round_cnt}] Keep loading...")
+                    print("Keep loading...")
                     continue
 
                 updating_state.gen_prompt_cnt += len(prompt_batch)
