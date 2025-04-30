@@ -116,18 +116,19 @@ class RayDAPOTrainer(RayPPOTrainer):
                 print(f"{data_state=}")
 
                 new_prompt_batch = DataProto.from_single_dict(batch_dict)
+                updating_state.gen_prompt_cnt += len(new_prompt_batch)
+
                 prompt_batch = (
                     DataProto.concat([prompt_batch, new_prompt_batch]) if prompt_batch is not None else new_prompt_batch
                 )
 
-                updating_state.gen_prompt_cnt += len(prompt_batch)
                 prompt_bsz = self.config.data.train_batch_size
                 estim_num_prompt_needed = (
                     -int(-1 / updating_state.qualified_rate) * prompt_bsz if updating_state.qualified_rate > 0 else 0
                 )
-                # Ceiling + at least one batch more for tolerance
-                print(f"{updating_state.gen_prompt_cnt=} <= {estim_num_prompt_needed=}?")
-                if updating_state.gen_prompt_cnt <= estim_num_prompt_needed:
+                estim_num_remaining_prompt_needed = estim_num_prompt_needed - updating_state.gen_prompt_cnt
+                print(f"{len(prompt_batch)=} <= {estim_num_remaining_prompt_needed*2=}?")
+                if len(prompt_batch) <= estim_num_remaining_prompt_needed * 2:
                     print("Keep loading...")
                     continue
 
