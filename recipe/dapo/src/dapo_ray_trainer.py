@@ -116,7 +116,6 @@ class RayDAPOTrainer(RayPPOTrainer):
                 print(f"{data_state=}")
 
                 new_prompt_batch = DataProto.from_single_dict(batch_dict)
-                updating_state.gen_prompt_cnt += len(new_prompt_batch)
 
                 prompt_batch = (
                     DataProto.concat([prompt_batch, new_prompt_batch]) if prompt_batch is not None else new_prompt_batch
@@ -132,6 +131,7 @@ class RayDAPOTrainer(RayPPOTrainer):
                     print("Keep loading...")
                     continue
 
+                updating_state.gen_prompt_cnt += len(prompt_batch)
                 updating_state.gen_round_cnt += 1
 
                 # pop those keys for generation
