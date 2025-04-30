@@ -51,7 +51,6 @@ if [ "${TEST}" != "1" ]; then
     overlong_buf_len=$((1024 * 4))
     max_response_length=$((1024 * 16 + overlong_buf_len))
     train_batch_size=512
-    gen_batch_size=$((train_batch_size * 4))
     num_updates_per_batch=16
     n_trajs_per_prompt=16
     ppo_mini_batch_size=$((train_batch_size / num_updates_per_batch))
@@ -64,7 +63,6 @@ else
     ppo_mini_batch_size=$((num_procs / n_trajs_per_prompt))
     num_updates_per_batch=2
     train_batch_size=$((ppo_mini_batch_size * num_updates_per_batch))
-    gen_batch_size=$((train_batch_size * 2))
     exp_name="${exp_name}-test"
     val_n=1
 fi
@@ -109,7 +107,6 @@ ray job submit --no-wait --runtime-env="${RUNTIME_ENV}" \
     data.truncation='error' \
     data.max_prompt_length=${max_prompt_length} \
     data.max_response_length=${max_response_length} \
-    data.gen_batch_size=${gen_batch_size} \
     data.train_batch_size=${train_batch_size} \
     reward_model.reward_manager=${reward_manager} \
     reward_model.overlong_buffer.enable=${enable_overlong_buf} \

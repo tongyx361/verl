@@ -8,7 +8,6 @@ defaults:
   - _self_
 
 data:
-  gen_batch_size: ${data.train_batch_size}
   repeat:
     factor: null # Set to `null` to disable repeating
     shuffle_seed: ${seed} # Set to a negative number to disable shuffling
