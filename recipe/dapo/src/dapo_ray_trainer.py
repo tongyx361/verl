@@ -52,6 +52,15 @@ class UpdatingState:
     timing_raw: dict[str, float] = field(default_factory=lambda: defaultdict(float))
     metrics: dict[str, float] = field(default_factory=lambda: defaultdict(float))
 
+    def reset(self):
+        self.gen_round_cnt = 0
+        self.gen_prompt_cnt = 0
+        self.gen_traj_cnt = 0
+
+        self.batch = None
+        self.timing_raw = defaultdict(float)
+        self.metrics = defaultdict(float)
+
 
 class RayDAPOTrainer(RayPPOTrainer):
     """
@@ -369,4 +378,4 @@ class RayDAPOTrainer(RayPPOTrainer):
 
                 progress_bar.update(1)
                 self.global_steps += 1
-                updating_state = UpdatingState()
+                updating_state.reset()
