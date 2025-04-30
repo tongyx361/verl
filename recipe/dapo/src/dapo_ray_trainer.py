@@ -107,7 +107,7 @@ class RayDAPOTrainer(RayPPOTrainer):
                 print(f"{data_state=}")
 
                 prompt_batch = (
-                    prompt_batch.union(DataProto.from_single_dict(batch_dict))
+                    prompt_batch.concat(DataProto.from_single_dict(batch_dict))
                     if prompt_batch is not None
                     else DataProto.from_single_dict(batch_dict)
                 )
@@ -246,9 +246,9 @@ class RayDAPOTrainer(RayPPOTrainer):
 
                         new_batch = new_batch[kept_traj_idxs]
                         updating_state.batch = (
-                            new_batch
-                            if updating_state.batch is None
-                            else DataProto.concat([updating_state.batch, new_batch])
+                            DataProto.concat([updating_state.batch, new_batch])
+                            if updating_state.batch is not None
+                            else new_batch
                         )
 
                         # Ceiling
