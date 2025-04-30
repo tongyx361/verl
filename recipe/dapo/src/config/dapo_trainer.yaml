@@ -12,6 +12,9 @@ data:
   repeat:
     factor: null # Set to `null` to disable repeating
     shuffle_seed: ${seed} # Set to a negative number to disable shuffling
+  dynamic_max_resp_len:
+    enable: True
+    extending_tolerance: 0.2
 
 reward_model:
   reward_manager: dapo

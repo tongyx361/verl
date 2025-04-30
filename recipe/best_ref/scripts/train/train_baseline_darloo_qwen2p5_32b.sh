@@ -40,7 +40,7 @@ fsdp_size=64
 gen_tp=2
 
 reward_manager=dapo
-enable_overlong_buf=True
+enable_overlong_buf=False
 overlong_penalty_factor=1.0
 
 enable_filter_groups=True

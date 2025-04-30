@@ -60,6 +60,10 @@ def compute_data_metrics(batch: DataProto, use_critic: bool = True) -> Dict[str,
     prompt_mask = batch.batch["attention_mask"][:, :-max_response_length].bool()
     response_mask = batch.batch["attention_mask"][:, -max_response_length:].bool()
 
+    resp_lens = batch.batch["response_mask"].sum(dim=-1)
+    non_truncated_resp_idx = torch.where(resp_lens < max_response_length)[0]
+    non_truncated_resp_lens = resp_lens[non_truncated_resp_idx]
+
     max_prompt_length = prompt_mask.size(-1)
 
     response_info = _compute_response_info(batch)
@@ -111,6 +115,10 @@ def compute_data_metrics(batch: DataProto, use_critic: bool = True) -> Dict[str,
         "response_length/clip_ratio": torch.mean(torch.eq(response_length, max_response_length).float())
         .detach()
         .item(),
+        # non-truncated response length
+        "non_truncated_response_length/mean": torch.mean(non_truncated_resp_lens).detach().item(),
+        "non_truncated_response_length/max": torch.max(non_truncated_resp_lens).detach().item(),
+        "non_truncated_response_length/min": torch.min(non_truncated_resp_lens).detach().item(),
         # prompt length
         "prompt_length/mean": torch.mean(prompt_length).detach().item(),
         "prompt_length/max": torch.max(prompt_length).detach().item(),
