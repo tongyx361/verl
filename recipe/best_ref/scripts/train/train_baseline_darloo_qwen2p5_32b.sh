@@ -6,6 +6,7 @@ NNODES=${NNODES:-16}
 ACTOR_LR=${ACTOR_LR:-"2e-6"}
 TRAIN_BSZ=${TRAIN_BSZ:-"512"}
 N_UPDATES_PER_BATCH=${N_UPDATES_PER_BATCH:-"16"}
+VAL_BEFORE_TRAIN=${VAL_BEFORE_TRAIN:-"True"}
 
 project_name='best-ref'
 
@@ -53,7 +54,6 @@ if [ "${TEST}" != "1" ]; then
     n_trajs_per_prompt=16
     ppo_mini_batch_size=$((TRAIN_BSZ / N_UPDATES_PER_BATCH))
     val_n=32
-    val_before_train=True
     resume_mode=auto
     save_freq=5
 else
@@ -66,7 +66,7 @@ else
     TRAIN_BSZ=$((ppo_mini_batch_size * N_UPDATES_PER_BATCH))
     exp_name="${exp_name}-test"
     val_n=1
-    val_before_train=False
+    VAL_BEFORE_TRAIN=False
     resume_mode=disable
     save_freq=-1
 fi
@@ -107,7 +107,7 @@ ray job submit --no-wait --runtime-env="${RUNTIME_ENV}" \
     data.truncation='error' \
     data.max_prompt_length=${max_prompt_length} \
     data.max_response_length=${max_response_length} \
-    data.train_batch_size=${TRAIN_BSZ} \
+    data.train_batch_size="${TRAIN_BSZ}" \
     reward_model.reward_manager=${reward_manager} \
     reward_model.overlong_buffer.enable=${enable_overlong_buf} \
     reward_model.overlong_buffer.len=${overlong_buf_len} \
@@ -165,7 +165,7 @@ ray job submit --no-wait --runtime-env="${RUNTIME_ENV}" \
     trainer.n_gpus_per_node=${n_procs_per_node} \
     trainer.nnodes="${NNODES}" \
     trainer.save_freq=${save_freq} \
-    trainer.val_before_train=${val_before_train} \
+    trainer.val_before_train="${VAL_BEFORE_TRAIN}" \
     trainer.test_freq=${test_freq} \
     trainer.total_epochs=${total_epochs} \
     trainer.default_local_dir="${CKPTS_DIR}" \
