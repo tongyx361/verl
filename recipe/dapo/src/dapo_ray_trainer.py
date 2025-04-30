@@ -114,7 +114,7 @@ class RayDAPOTrainer(RayPPOTrainer):
                 gen_bsz = len(prompt_batch)
 
                 prompt_bsz = self.config.data.train_batch_size
-                if (
+                if updating_state.qualified_rate > 0 and (
                     len(prompt_batch) + updating_state.gen_prompt_cnt
                     <= -int(-1 / updating_state.qualified_rate) * prompt_bsz
                 ):  # Ceiling + at least one batch more for tolerance
