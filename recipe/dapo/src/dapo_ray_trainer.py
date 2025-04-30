@@ -251,7 +251,7 @@ class RayDAPOTrainer(RayPPOTrainer):
                         updating_state.gen_prompt_cnt += len(prompt_batch)
 
                         # Ceiling
-                        updating_state.gen_traj_cnt += len(new_batch)
+                        updating_state.gen_traj_cnt += len(gen_batch_output)
                         updating_state.qualified_rate = len(updating_state.batch) / updating_state.gen_traj_cnt
                         traj_bsz = prompt_bsz * self.config.actor_rollout_ref.rollout.n
                         if len(updating_state.batch) < traj_bsz:
