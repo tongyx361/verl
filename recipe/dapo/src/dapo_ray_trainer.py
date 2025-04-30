@@ -163,6 +163,7 @@ class RayDAPOTrainer(RayPPOTrainer):
                     new_batch = prompt_batch.repeat(
                         repeat_times=self.config.actor_rollout_ref.rollout.n, interleave=True
                     )
+                    updating_state.gen_prompt_cnt += len(prompt_batch)
                     prompt_batch = None
                     new_batch = new_batch.union(gen_batch_output)
 
@@ -247,8 +248,6 @@ class RayDAPOTrainer(RayPPOTrainer):
                             if updating_state.batch is None
                             else DataProto.concat([updating_state.batch, new_batch])
                         )
-
-                        updating_state.gen_prompt_cnt += len(prompt_batch)
 
                         # Ceiling
                         updating_state.gen_traj_cnt += len(gen_batch_output)
