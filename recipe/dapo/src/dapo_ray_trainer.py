@@ -107,7 +107,7 @@ class RayDAPOTrainer(RayPPOTrainer):
         self.train_dataloader = StatefulDataLoader(
             dataset=self.train_dataset,
             batch_sampler=self.batch_sampler,
-            num_workers=8,
+            num_workers=0,
             collate_fn=collate_fn,
         )
 
