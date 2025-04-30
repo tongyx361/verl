@@ -18,7 +18,6 @@ This trainer supports model-agonistic model initialization with huggingface
 
 import logging
 import os
-import shutil
 import uuid
 from collections import defaultdict
 from contextlib import contextmanager
@@ -491,7 +490,7 @@ class RayPPOTrainer:
 
         self.train_dataloader = StatefulDataLoader(
             dataset=self.train_dataset,
-            batch_size=self.config.data.get("gen_batch_size", self.config.data.train_batch_size),
+            batch_size=self.config.data.train_batch_size,
             num_workers=8,
             drop_last=True,
             collate_fn=collate_fn,
