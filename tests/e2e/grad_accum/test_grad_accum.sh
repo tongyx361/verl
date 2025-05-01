@@ -36,7 +36,9 @@ train_prompt_bsz=$((train_prompt_mini_bsz * 2)) # 4 * b * n / g
 
 exp_name="$(basename "${MODEL_ID,,}")-test-grad-accum"
 
-huggingface-cli download "${MODEL_ID}" --local-dir "${MODEL_PATH}"
+if [ -d "$(dirname "${MODEL_PATH}")" ]; then
+    huggingface-cli download "${MODEL_ID}" --local-dir "${MODEL_PATH}"
+fi
 
 if [ ! -f "${TRAIN_FILES}" ] || [ ! -f "${VAL_FILES}" ]; then
     echo "Downloading the GSM8K dataset..."
