@@ -12,7 +12,7 @@ num_procs=$((NNODES * n_procs_per_node))
 
 repeat_factor=100
 
-exp_name="dapo-rep${repeat_factor}-qwen2p5-32b-lr${ACTOR_LR}-${num_procs}gpus"
+exp_name="dapo-dmlr-qwen2p5-32b-lr${ACTOR_LR}-${num_procs}gpus"
 
 adv_estimator=grpo
 # Clip epsilons
@@ -39,8 +39,7 @@ fsdp_size=64
 gen_tp=2
 
 reward_manager=dapo
-enable_overlong_buf=True
-overlong_penalty_factor=1.0
+enable_overlong_buf=False
 
 enable_filter_groups=True
 filter_metric=acc
@@ -48,8 +47,7 @@ max_num_gen_batches=10
 
 if [ "${TEST}" != "1" ]; then
     max_prompt_length=$((1024 * 2))
-    overlong_buf_len=$((1024 * 4))
-    max_response_length=$((1024 * 16 + overlong_buf_len))
+    max_response_length=$((1024 * 20))
     train_batch_size=512
     num_updates_per_batch=16
     n_trajs_per_prompt=16
@@ -57,8 +55,7 @@ if [ "${TEST}" != "1" ]; then
     val_n=32
 else
     max_prompt_length=$((1024 * 2))
-    overlong_buf_len=$((1024 * 1))
-    max_response_length=$((1024 * 1 + overlong_buf_len))
+    max_response_length=$((1024 * 2))
     n_trajs_per_prompt=2
     ppo_mini_batch_size=$((num_procs / n_trajs_per_prompt))
     num_updates_per_batch=2
@@ -110,8 +107,6 @@ ray job submit --no-wait --runtime-env="${RUNTIME_ENV}" \
     data.train_batch_size=${train_batch_size} \
     reward_model.reward_manager=${reward_manager} \
     reward_model.overlong_buffer.enable=${enable_overlong_buf} \
-    reward_model.overlong_buffer.len=${overlong_buf_len} \
-    reward_model.overlong_buffer.penalty_factor=${overlong_penalty_factor} \
     reward_model.overlong_buffer.log=True \
     actor_rollout_ref.actor.ppo_epochs=${ppo_epochs} \
     actor_rollout_ref.rollout.n=${n_trajs_per_prompt} \

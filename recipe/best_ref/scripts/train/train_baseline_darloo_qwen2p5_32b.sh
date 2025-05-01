@@ -41,7 +41,6 @@ gen_tp=2
 
 reward_manager=dapo
 enable_overlong_buf=False
-overlong_penalty_factor=1.0
 
 enable_filter_groups=True
 filter_metric=acc
@@ -49,8 +48,7 @@ max_num_gen_batches=10
 
 if [ "${TEST}" != "1" ]; then
     max_prompt_length=$((1024 * 2))
-    overlong_buf_len=$((1024 * 4))
-    max_response_length=$((1024 * 16 + overlong_buf_len))
+    max_response_length=$((1024 * 20))
     n_trajs_per_prompt=16
     ppo_mini_batch_size=$((TRAIN_BSZ / N_UPDATES_PER_BATCH))
     val_n=32
@@ -58,8 +56,7 @@ if [ "${TEST}" != "1" ]; then
     save_freq=5
 else
     max_prompt_length=$((1024 * 2))
-    overlong_buf_len=$((1024 * 1))
-    max_response_length=$((1024 * 1 + overlong_buf_len))
+    max_response_length=$((1024 * 2))
     n_trajs_per_prompt=2
     ppo_mini_batch_size=$((num_procs / n_trajs_per_prompt))
     N_UPDATES_PER_BATCH=2
