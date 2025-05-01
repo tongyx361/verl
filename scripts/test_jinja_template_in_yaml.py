@@ -1,39 +1,13 @@
 #!/usr/bin/env python3
-import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List
 
 import hydra
-import jinja2
 import yaml
 from hydra.core.config_store import ConfigStore
 
-
-def apply_template(template_str: str, content: Dict[str, Any]) -> str:
-    """Apply a Jinja2 template with custom filters.
-
-    Args:
-        template_str: Jinja2 template string
-        content: Dictionary containing variables to use in the template
-
-    Returns:
-        Rendered template string
-    """
-    # Create a Jinja2 environment
-    env = jinja2.Environment()
-
-    # Add custom filters to mimic the template's behavior
-    def regex_replace(value, pattern, replacement):
-        return re.sub(pattern, replacement, value, flags=re.DOTALL)
-
-    env.filters["regex_replace"] = regex_replace
-
-    # Compile the template
-    template = env.from_string(template_str)
-
-    # Render with the content
-    return template.render(**content)
+from verl.utils.dataset.rl_dataset import apply_template
 
 
 @dataclass

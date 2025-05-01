@@ -16,18 +16,44 @@ import copy
 import os
 import re
 from collections import defaultdict
-from typing import List, Optional, Union
+from typing import Any, Dict, List, Optional, Union
 
 import datasets
+import jinja2
 import numpy as np
 import torch
-from jinja2 import Template
 from omegaconf import DictConfig, ListConfig
 from torch.utils.data import Dataset
 from transformers import PreTrainedTokenizer, ProcessorMixin
 
 import verl.utils.torch_functional as verl_F
 from verl.utils.model import compute_position_id_with_mask
+
+
+def apply_template(template_str: str, render_kwargs: Dict[str, Any]) -> str:
+    """Apply a Jinja2 template with custom filters.
+
+    Args:
+        template_str: Jinja2 template string
+        content: Dictionary containing variables to use in the template
+
+    Returns:
+        Rendered template string
+    """
+    # Create a Jinja2 environment
+    env = jinja2.Environment()
+
+    # Add custom filters to mimic the template's behavior
+    def regex_replace(value, pattern, replacement):
+        return re.sub(pattern, replacement, value, flags=re.DOTALL)
+
+    env.filters["regex_replace"] = regex_replace
+
+    # Compile the template
+    template = env.from_string(template_str)
+
+    # Render with the content
+    return template.render(**render_kwargs)
 
 
 def collate_fn(data_list: list[dict]) -> dict:
@@ -173,10 +199,11 @@ class RLHFDataset(Dataset):
                 last_user_msg = msg
                 break
         assert last_user_msg is not None, f"No user message found in {messages=}"
-        last_user_msg_template = self.config.last_user_msg_template
+        last_user_msg_template = self.config.get("last_user_msg_template", None)
         # Apply the template to the content
         if last_user_msg_template:
-            last_user_msg["content"] = Template(last_user_msg_template).render(**last_user_msg)
+            # Use apply_template instead of direct Template rendering
+            last_user_msg["content"] = apply_template(last_user_msg_template, last_user_msg)
 
         if self.processor is not None:
             from verl.utils.dataset.vision_utils import process_image, process_video
