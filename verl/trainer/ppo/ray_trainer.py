@@ -478,6 +478,8 @@ class RayPPOTrainer:
             tokenizer=self.tokenizer,
             processor=self.processor,
             config=self.config.data,
+            repeat_factor=self.config.data.repeat.factor,
+            shuffle_seed=self.config.data.repeat.shuffle_seed,
         )
 
         # use sampler for better ckpt resume
@@ -502,6 +504,8 @@ class RayPPOTrainer:
             tokenizer=self.tokenizer,
             processor=self.processor,
             config=self.config.data,
+            repeat_factor=self.config.data.val_repeat_factor,
+            shuffle_seed=-1,
         )
         self.val_dataloader = StatefulDataLoader(
             dataset=self.val_dataset,

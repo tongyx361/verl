@@ -61,6 +61,8 @@ class RLHFDataset(Dataset):
         tokenizer: PreTrainedTokenizer,
         config: DictConfig,
         processor: Optional[ProcessorMixin] = None,
+        repeat_factor: Optional[int] = None,
+        shuffle_seed: int = -1,
     ):
         if not isinstance(data_files, (List, ListConfig)):
             data_files = [data_files]
@@ -88,7 +90,7 @@ class RLHFDataset(Dataset):
         # default not store
         self.serialize_dataset = False
         self._download()
-        self._read_files_and_tokenize()
+        self._read_files_and_tokenize(repeat_factor=repeat_factor, shuffle_seed=shuffle_seed)
 
     def _download(self, use_origin_parquet=False):
         from verl.utils.fs import copy_to_local
@@ -97,7 +99,7 @@ class RLHFDataset(Dataset):
         for i, parquet_file in enumerate(data_files):
             self.data_files[i] = copy_to_local(src=parquet_file, cache_dir=self.cache_dir)
 
-    def _read_files_and_tokenize(self) -> None:
+    def _read_files_and_tokenize(self, repeat_factor: Optional[int] = None, shuffle_seed: int = -1) -> None:
         dataframes = []
         for parquet_file in self.data_files:
             # read parquet files and cache
@@ -120,9 +122,8 @@ class RLHFDataset(Dataset):
 
             print(f"filter dataset len: {len(self.dataframe)}")
 
-        if self.config.repeat.factor and self.config.repeat.factor != 1:
-            self.dataframe = self.dataframe.repeat(self.config.repeat.factor)
-            shuffle_seed = self.config.repeat.shuffle_seed
+        if repeat_factor and repeat_factor != 1:
+            self.dataframe = self.dataframe.repeat(repeat_factor)
             if shuffle_seed >= 0:
                 self.dataframe = self.dataframe.shuffle(seed=shuffle_seed)
 

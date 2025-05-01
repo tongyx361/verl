@@ -12,6 +12,7 @@ data:
   repeat:
     factor: null # Set to `null` to disable repeating
     shuffle_seed: ${seed} # Set to a negative number to disable shuffling
+  val_repeat_factor: null # Set to `null` to disable repeating
   dynamic_max_resp_len:
     enable: True
     extending_tolerance: 0.2
