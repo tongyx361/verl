@@ -23,7 +23,7 @@ from collections import defaultdict
 from copy import deepcopy
 from dataclasses import dataclass, field
 from pprint import pprint
-from typing import Optional
+from typing import Any, Optional
 
 import numpy as np
 import torch
@@ -59,7 +59,6 @@ class UpdatingState:
     metrics: dict[str, float] = field(default_factory=lambda: defaultdict(float))
     # Leaving for the next generation stage
     qualified_rate: float = 0.0
-    max_tokens: int = 0
 
     def reset(self):
         self.gen_round_cnt = 0
@@ -69,6 +68,15 @@ class UpdatingState:
         self.batch = None
         self.timing_raw = defaultdict(float)
         self.metrics = defaultdict(float)
+
+
+@dataclass
+class GenerationState:
+    prompt_batch: Optional[DataProto] = None
+    sampling_params: dict[str, Any] = field(default_factory=dict)
+
+    def reset(self):
+        self.prompt_batch = None
 
 
 class RayDAPOTrainer(RayPPOTrainer):
@@ -118,9 +126,10 @@ class RayDAPOTrainer(RayPPOTrainer):
         self.global_steps += 1
         last_val_metrics = None
 
-        updating_state = UpdatingState(max_tokens=self.config.actor_rollout_ref.rollout.response_length)
-        # Generation-level state
-        prompt_batch = None
+        updating_state = UpdatingState()
+        gen_state = GenerationState(
+            sampling_params={"max_tokens": self.config.actor_rollout_ref.rollout.response_length}
+        )
 
         for epoch in range(self.config.trainer.total_epochs):
             for batch_dict in self.train_dataloader:
@@ -129,8 +138,11 @@ class RayDAPOTrainer(RayPPOTrainer):
 
                 new_prompt_batch = DataProto.from_single_dict(batch_dict)
 
-                prompt_batch = (
-                    DataProto.concat([prompt_batch, new_prompt_batch]) if prompt_batch is not None else new_prompt_batch
+                # Initalize generation-level state
+                gen_state.prompt_batch = (
+                    DataProto.concat([gen_state.prompt_batch, new_prompt_batch])
+                    if gen_state.prompt_batch is not None
+                    else new_prompt_batch
                 )
 
                 prompt_bsz = self.config.data.train_batch_size
@@ -138,72 +150,68 @@ class RayDAPOTrainer(RayPPOTrainer):
                     -int(-1 / updating_state.qualified_rate) * prompt_bsz if updating_state.qualified_rate > 0 else 0
                 )
                 estim_num_remaining_prompt_needed = estim_num_prompt_needed - updating_state.gen_prompt_cnt
-                # logger.info(
-                #     f"[{self.global_steps}/{updating_state.gen_round_cnt}]"
-                #     f" {len(prompt_batch)=} "
-                #     f"<= {int(estim_num_remaining_prompt_needed*self.config.data.oversampling_factor)=}?",
-                # )
                 logger.info(
                     "[update:%d/gen:%d] # of Prompts to Gen. (%d) <= # of Remaining Prompts Needed (%d)?",
                     self.global_steps,
                     updating_state.gen_round_cnt,
-                    len(prompt_batch),
+                    len(gen_state.prompt_batch),
                     int(estim_num_remaining_prompt_needed * self.config.data.oversampling_factor),
                 )
-                if len(prompt_batch) <= int(estim_num_remaining_prompt_needed * self.config.data.oversampling_factor):
+                if len(gen_state.prompt_batch) <= int(
+                    estim_num_remaining_prompt_needed * self.config.data.oversampling_factor
+                ):
                     logger.info("Keep loading...")
                     continue
 
-                updating_state.gen_prompt_cnt += len(prompt_batch)
+                updating_state.gen_prompt_cnt += len(gen_state.prompt_batch)
                 updating_state.gen_round_cnt += 1
 
                 # pop those keys for generation
-                if "multi_modal_inputs" in prompt_batch.non_tensor_batch.keys():
-                    gen_batch = prompt_batch.pop(
-                        batch_keys=["input_ids", "attention_mask", "position_ids"],
-                        non_tensor_batch_keys=["raw_prompt_ids", "multi_modal_data", "multi_modal_inputs"],
-                    )
-                else:
-                    gen_batch = prompt_batch.pop(
-                        batch_keys=["input_ids", "attention_mask", "position_ids"],
-                        non_tensor_batch_keys=["raw_prompt_ids"],
-                    )
+                batch_keys = ["input_ids", "attention_mask", "position_ids"]
+                non_tensor_batch_keys = ["raw_prompt_ids"]
+                if "multi_modal_inputs" in gen_state.prompt_batch.non_tensor_batch.keys():
+                    batch_keys.extend(["multi_modal_data", "multi_modal_inputs"])
+                gen_batch = gen_state.prompt_batch.pop(
+                    batch_keys=batch_keys, non_tensor_batch_keys=non_tensor_batch_keys
+                )
+                if gen_batch.meta_info.get("sampling_params") is None:
+                    gen_batch.meta_info["sampling_params"] = {}
+                sampling_params = gen_batch.meta_info["sampling_params"]
+                if sampling_params.get("max_tokens") is None:
+                    sampling_params["max_tokens"] = self.config.actor_rollout_ref.rollout.response_length
 
                 is_last_step = self.global_steps >= self.total_training_steps
 
+                gen_batch.meta_info["sampling_params"] = gen_state.sampling_params
                 with _timer("step", updating_state.timing_raw):
                     # generate a batch
                     with _timer("gen", updating_state.timing_raw):
-                        gen_batch_output = self.actor_rollout_wg.generate_sequences(
-                            gen_batch, max_tokens=updating_state.max_tokens
-                        )
+                        gen_batch_output = self.actor_rollout_wg.generate_sequences(gen_batch)
 
                     if self.config.algorithm.adv_estimator == AdvantageEstimator.REMAX:
                         with _timer("gen_max", updating_state.timing_raw):
                             gen_baseline_batch = deepcopy(gen_batch)
                             gen_baseline_batch.meta_info["do_sample"] = False
-                            gen_baseline_output = self.actor_rollout_wg.generate_sequences(
-                                gen_baseline_batch, max_tokens=updating_state.max_tokens
-                            )
+                            gen_baseline_output = self.actor_rollout_wg.generate_sequences(gen_baseline_batch)
 
-                            prompt_batch = prompt_batch.union(gen_baseline_output)
-                            reward_baseline_tensor = self.reward_fn(prompt_batch)
+                            gen_state.prompt_batch = gen_state.prompt_batch.union(gen_baseline_output)
+                            reward_baseline_tensor = self.reward_fn(gen_state.prompt_batch)
                             reward_baseline_tensor = reward_baseline_tensor.sum(dim=-1)
 
-                            prompt_batch.pop(batch_keys=list(gen_baseline_output.batch.keys()))
+                            gen_state.prompt_batch.pop(batch_keys=list(gen_baseline_output.batch.keys()))
 
-                            prompt_batch.batch["reward_baselines"] = reward_baseline_tensor
+                            gen_state.prompt_batch.batch["reward_baselines"] = reward_baseline_tensor
 
                             del gen_baseline_batch, gen_baseline_output
 
-                    prompt_batch.non_tensor_batch["uid"] = np.array(
-                        [str(uuid.uuid4()) for _ in range(len(prompt_batch.batch))], dtype=object
+                    gen_state.prompt_batch.non_tensor_batch["uid"] = np.array(
+                        [str(uuid.uuid4()) for _ in range(len(gen_state.prompt_batch.batch))], dtype=object
                     )
                     # repeat to align with repeated responses in rollout
-                    new_batch = prompt_batch.repeat(
+                    new_batch = gen_state.prompt_batch.repeat(
                         repeat_times=self.config.actor_rollout_ref.rollout.n, interleave=True
                     )
-                    prompt_batch = None
+                    gen_state.reset()
                     new_batch = new_batch.union(gen_batch_output)
 
                     with _timer("reward", updating_state.timing_raw):
@@ -297,10 +305,11 @@ class RayDAPOTrainer(RayPPOTrainer):
                                 updating_state.gen_round_cnt,
                                 max_non_truncated_resp_len,
                             )
-                            updating_state.max_tokens = int(
+                            max_tokens = int(
                                 max_non_truncated_resp_len
                                 * (1 + self.config.data.dynamic_max_resp_len.extending_tolerance)
                             )
+                            gen_state.sampling_params["max_tokens"] = max_tokens
 
                         # Ceiling
                         updating_state.gen_traj_cnt += len(gen_batch_output)

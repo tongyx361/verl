@@ -59,7 +59,6 @@ logger.setLevel(os.getenv("VERL_LOGGING_LEVEL", "WARN"))
 # NOTE(sgm): add for verl. We can optimize it by making the dataloader yield List[int] without padding.
 def _pre_process_inputs(pad_token_id, prompt_token_ids: torch.Tensor) -> list[int]:
     # remove the left padding in the prompt token_id
-    # pad_token_id = self.llm_engine.tokenizer.pad_token_id if self.llm_engine.tokenizer.pad_token_id is not None else self.llm_engine.tokenizer.eos_token_id
     non_pad_index = torch.nonzero(prompt_token_ids != pad_token_id, as_tuple=False)[0][0]
     token_ids = prompt_token_ids[non_pad_index:].tolist()
     return token_ids
@@ -67,11 +66,11 @@ def _pre_process_inputs(pad_token_id, prompt_token_ids: torch.Tensor) -> list[in
 
 # NOTE(linjunrong): adhoc
 def _post_process_outputs(tokenizer, output):
-    def _map_each_response(l):
+    def _map_each_response(lst):
         # output_token_ids = torch.tensor(l['token_ids'])
         log_probs = []
         output_token_ids = []
-        for log_prob, token_ids, _ in l["meta_info"]["output_token_logprobs"]:
+        for log_prob, token_ids, _ in lst["meta_info"]["output_token_logprobs"]:
             log_probs.append(log_prob)
             output_token_ids.append(token_ids)
         log_probs = torch.tensor(log_probs)
@@ -295,7 +294,7 @@ class SGLangRollout(BaseRollout):
                 spaces_between_special_tokens=True,
             )
         # users can customize different sampling_params at different run
-        with self.update_sampling_params(**kwargs):
+        with self.update_sampling_params(**prompts.meta_info.get("sampling_params", {}), **kwargs):
             print(f"{self.sampling_params=}")
             output = self.inference_engine.generate(
                 prompt=None,  # because we have already convert it to prompt token id
