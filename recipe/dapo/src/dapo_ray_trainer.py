@@ -298,12 +298,14 @@ class RayDAPOTrainer(RayPPOTrainer):
                         if self.config.data.dynamic_max_resp_len.enable:
                             response_mask = compute_response_mask(updating_state.batch)
                             resp_lens = response_mask.sum(dim=-1)
-                            max_non_truncated_resp_len = resp_lens[resp_lens < resp_lens.max()].max().item()
+                            gen_max_resp_len = resp_lens.max().item()
+                            max_non_truncated_resp_len = resp_lens[resp_lens < gen_max_resp_len]
                             logger.info(
-                                "[update:%d/gen:%d] Max non-truncated response length: %d",
+                                "[update:%d/gen:%d] Max non-truncated response length: %d / Max response length: %d",
                                 self.global_steps,
                                 updating_state.gen_round_cnt,
                                 max_non_truncated_resp_len,
+                                gen_max_resp_len,
                             )
                             max_tokens = int(
                                 max_non_truncated_resp_len
