@@ -113,9 +113,8 @@ infer_ppo_max_token_len=$((2048 * num_procs))
 test_freq=${save_freq}
 
 ckpt_name="${RECIPE}-dmrl-${MODEL_ID}-lr${ACTOR_LR}-bs${TRAIN_BS}-nup${N_UPDATES_PER_BATCH}-${num_procs}gpus"
-if [ "${TEST}" == "1" ]; then
-    ckpt_name="${ckpt_name}-test"
-fi
+[ "${TEST}" == "1" ] && ckpt_name="${ckpt_name}-test"
+
 exp_name="${ckpt_name}-${DEVICE}-$(git rev-parse --short HEAD)-$(date +%Y%m%d-%H%M%S)"
 
 log_home="${RAY_DATA_HOME}/${project_name}/logs/train"
