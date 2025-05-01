@@ -118,7 +118,7 @@ class RayDAPOTrainer(RayPPOTrainer):
         self.global_steps += 1
         last_val_metrics = None
 
-        updating_state = UpdatingState(max_tokens=self.config.actor_rollout_ref.rollout.max_tokens)
+        updating_state = UpdatingState(max_tokens=self.config.actor_rollout_ref.rollout.response_length)
         # Generation-level state
         prompt_batch = None
 
