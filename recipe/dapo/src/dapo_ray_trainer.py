@@ -156,10 +156,10 @@ class RayDAPOTrainer(RayPPOTrainer):
                     self.global_steps,
                     updating_state.gen_round_cnt,
                     len(gen_state.prompt_batch),
-                    int(estim_num_remaining_prompt_needed * self.config.data.oversampling_factor),
+                    int(estim_num_remaining_prompt_needed * self.config.algorithm.filter_groups.oversampling_factor),
                 )
                 if len(gen_state.prompt_batch) <= int(
-                    estim_num_remaining_prompt_needed * self.config.data.oversampling_factor
+                    estim_num_remaining_prompt_needed * self.config.algorithm.filter_groups.oversampling_factor
                 ):
                     logger.info("Keep loading...")
                     continue

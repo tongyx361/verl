@@ -15,7 +15,7 @@
 
 
 def _default_compute_score(data_source, solution_str, ground_truth, extra_info=None):
-    if data_source.startswith("MATH##") or data_source.startswith("aime"):
+    if data_source.startswith("MATH##") or data_source.startswith("aime") or data_source.startswith("simplelr_"):
         from . import math_verify
 
         verify_result = math_verify.compute_score(solution_str, ground_truth, return_dict=True)

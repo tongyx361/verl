@@ -8,7 +8,6 @@ defaults:
   - _self_
 
 data:
-  oversampling_factor: 1.2
   repeat:
     factor: null # Set to `null` to disable repeating
     shuffle_seed: ${seed} # Set to a negative number to disable shuffling
@@ -20,16 +19,17 @@ data:
 reward_model:
   reward_manager: dapo
   overlong_buffer:
-    enable: False # We try to avoid forgetting to set enable
-    len: 0
-    penalty_factor: 0.0
-    log: False
+    enable: False
+    len: 4096
+    penalty_factor: 1.0
+    log: True
 
 algorithm:
   filter_groups:
-    enable: False # We try to avoid forgetting to set enable
-    metric: null # acc / score / seq_reward / seq_final_reward / ...
-    max_num_gen_batches: 0 # Non-positive values mean no upper limit
+    enable: True
+    metric: acc # acc / score / seq_reward / seq_final_reward / ...
+    max_num_gen_batches: 10 # Non-positive values mean no upper limit
+    oversampling_factor: 1.2
 
 trainer:
   project_name: verl_dapo
