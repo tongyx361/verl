@@ -175,7 +175,7 @@ class RayDAPOTrainer(RayPPOTrainer):
                     # generate a batch
                     with _timer("gen", updating_state.timing_raw):
                         gen_batch_output = self.actor_rollout_wg.generate_sequences(
-                            gen_batch, updating_state.max_tokens
+                            gen_batch, max_tokens=updating_state.max_tokens
                         )
 
                     if self.config.algorithm.adv_estimator == AdvantageEstimator.REMAX:
@@ -183,7 +183,7 @@ class RayDAPOTrainer(RayPPOTrainer):
                             gen_baseline_batch = deepcopy(gen_batch)
                             gen_baseline_batch.meta_info["do_sample"] = False
                             gen_baseline_output = self.actor_rollout_wg.generate_sequences(
-                                gen_baseline_batch, updating_state.max_tokens
+                                gen_baseline_batch, max_tokens=updating_state.max_tokens
                             )
 
                             prompt_batch = prompt_batch.union(gen_baseline_output)
