@@ -32,8 +32,7 @@ from verl.trainer.ppo.metric_utils import (
     compute_timing_metrics,
     reduce_metrics,
 )
-from verl.trainer.ppo.ray_trainer import AdvantageEstimator, RayPPOTrainer, _timer, apply_kl_penalty, compute_advantage
-from verl.utils.torch_functional import calc_mini_batch_loss_token_nums
+from verl.trainer.ppo.ray_trainer import AdvantageEstimator, RayPPOTrainer, _timer, apply_kl_penalty, calc_mini_batch_loss_token_nums, compute_advantage
 
 
 class RayDAPOTrainer(RayPPOTrainer):

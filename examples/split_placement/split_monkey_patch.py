@@ -23,16 +23,7 @@ import numpy as np
 import torch
 
 from verl import DataProto
-from verl.trainer.ppo.ray_trainer import (
-    AdvantageEstimator,
-    _timer,
-    apply_kl_penalty,
-    compute_advantage,
-    compute_data_metrics,
-    compute_timing_metrics,
-    reduce_metrics,
-)
-from verl.utils.torch_functional import calc_mini_batch_loss_token_nums
+from verl.trainer.ppo.ray_trainer import AdvantageEstimator, _timer, apply_kl_penalty, calc_mini_batch_loss_token_nums, compute_advantage, compute_data_metrics, compute_timing_metrics, reduce_metrics
 
 
 def fit(self):
