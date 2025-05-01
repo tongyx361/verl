@@ -12,11 +12,13 @@ num_procs=$((NNODES * n_procs_per_node))
 MODEL_ID=${MODEL_ID:-"qwen2p5-32b"}
 if [ "${MODEL_ID}" == "qwen2p5-32b" ]; then
     model_name="Qwen2.5-32B"
+    sp_size=8 # In-node
     fsdp_size=64
     gen_tp=2
     gpu_mem_util=0.7
 elif [ "${MODEL_ID}" == "qwen2p5-7b" ]; then
     model_name="Qwen2.5-7B"
+    sp_size=4 # 28 KV heads
     fsdp_size=8 # In-node
     gen_tp=1
     gpu_mem_util=0.9
@@ -142,7 +144,6 @@ ppo_mini_batch_size=$((TRAIN_BS / N_UPDATES_PER_BATCH))
 [ "${TEST}" == "1" ] && ppo_mini_batch_size=$((num_procs / n_trajs_per_prompt))
 # Other settings
 temperature=1.0
-sp_size=8 # In-node
 offload=False
 
 use_dynamic_bsz=True
