@@ -30,6 +30,7 @@ import torch
 from tqdm import tqdm
 
 from verl import DataProto
+from verl.trainer.ppo.core_algos import agg_loss
 from verl.trainer.ppo.metric_utils import (
     compute_data_metrics,
     compute_throughout_metrics,
@@ -346,6 +347,15 @@ class RayDAPOTrainer(RayPPOTrainer):
                     # recompute old_log_probs
                     with _timer("old_log_prob", updating_state.timing_raw):
                         old_log_prob = self.actor_rollout_wg.compute_log_prob(updating_state.batch)
+                        entropys = old_log_prob.batch["entropys"]
+                        response_masks = updating_state.batch.batch["response_mask"]
+                        loss_agg_mode = self.config.actor_rollout_ref.actor.loss_agg_mode
+                        entropy_loss = agg_loss(
+                            loss_mat=entropys, loss_mask=response_masks, loss_agg_mode=loss_agg_mode
+                        )
+                        old_log_prob_metrics = {"actor/entropy_loss": entropy_loss.detach().item()}
+                        updating_state.metrics.update(old_log_prob_metrics)
+                        old_log_prob.batch.pop("entropys")
                         updating_state.batch = updating_state.batch.union(old_log_prob)
 
                     if self.use_reference_policy:
