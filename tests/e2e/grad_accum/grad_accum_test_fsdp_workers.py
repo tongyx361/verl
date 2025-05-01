@@ -9,7 +9,7 @@ from omegaconf import open_dict
 
 from verl import DataProto
 from verl.single_controller.base.decorator import Dispatch, register
-from verl.trainer.ppo import core_algos
+from verl.trainer.ppo.core_algos import agg_loss, compute_policy_loss, compute_value_loss, kl_penalty
 from verl.utils.checkpoint.fsdp_checkpoint_manager import FSDPCheckpointManager
 from verl.utils.debug import log_gpu_memory_usage
 from verl.utils.flops_counter import FlopsCounter
@@ -155,20 +155,20 @@ class GradAccumulationTestDPActor(DataParallelPPOActor):
             # all return: (bsz, response_length)
             entropy, log_prob = self._forward_micro_batch(micro_batch=micro_batch, temperature=temperature)
 
-            pg_loss, pg_clipfrac, ppo_kl, pg_clipfrac_lower = core_algos.compute_policy_loss(
+            pg_loss, pg_clipfrac, ppo_kl, pg_clipfrac_lower = compute_policy_loss(
                 old_log_prob=old_log_prob, log_prob=log_prob, advantages=advantages, response_mask=response_mask, cliprange=clip_ratio, cliprange_low=clip_ratio_low, cliprange_high=clip_ratio_high, clip_ratio_c=clip_ratio_c, loss_agg_mode=loss_agg_mode
             )
             loss = pg_loss
 
             # compute entropy loss from entropy
-            entropy_loss = core_algos.compute_entropy_loss(entropy=entropy, response_mask=response_mask, loss_agg_mode=loss_agg_mode)
+            entropy_loss = agg_loss(loss_mat=entropy, loss_mask=response_mask, loss_agg_mode=loss_agg_mode)
             loss += -entropy_loss * entropy_coeff
 
             if self.config.use_kl_loss:
                 ref_log_prob = micro_batch["ref_log_prob"]
                 # compute kl loss
-                kld = core_algos.kl_penalty(logprob=log_prob, ref_logprob=ref_log_prob, kl_penalty=self.config.kl_loss_type)
-                kl_loss = core_algos.compute_kl_loss(kld=kld, response_mask=response_mask, loss_agg_mode=loss_agg_mode)
+                kld = kl_penalty(logprob=log_prob, ref_logprob=ref_log_prob, kl_penalty=self.config.kl_loss_type)
+                kl_loss = agg_loss(loss_mat=kld, loss_mask=response_mask, loss_agg_mode=loss_agg_mode)
 
                 loss += kl_loss * self.config.kl_loss_coef
 
@@ -279,7 +279,7 @@ class GradAccumulationTestDPCritic(DataParallelPPOCritic):
 
             # assert not torch.any(torch.isnan(vpreds)).item()
 
-            vf_loss, vf_clipfrac = core_algos.compute_value_loss(vpreds=vpreds, values=values, returns=returns, response_mask=response_mask, cliprange_value=self.config.cliprange_value, loss_agg_mode=loss_agg_mode)
+            vf_loss, vf_clipfrac = compute_value_loss(vpreds=vpreds, values=values, returns=returns, response_mask=response_mask, cliprange_value=self.config.cliprange_value, loss_agg_mode=loss_agg_mode)
 
             loss = vf_loss
             # Rescale the final model loss together instead of separately in core_algos
