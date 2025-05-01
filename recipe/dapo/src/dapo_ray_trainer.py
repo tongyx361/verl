@@ -151,7 +151,7 @@ class RayDAPOTrainer(RayPPOTrainer):
                 )
                 estim_num_remaining_prompt_needed = estim_num_prompt_needed - updating_state.gen_prompt_cnt
                 logger.info(
-                    "[update:%d/gen:%d] # of Prompts to Gen. (%d) <= # of Remaining Prompts Needed (%d)?",
+                    "[step:%d/gen_round_cnt:%d] # of Prompts to Gen. (%d) <= # of Remaining Prompts Needed (%d)?",
                     self.global_steps,
                     updating_state.gen_round_cnt,
                     len(gen_state.prompt_batch),
@@ -301,7 +301,8 @@ class RayDAPOTrainer(RayPPOTrainer):
                             gen_max_resp_len = resp_lens.max().item()
                             max_non_truncated_resp_len = resp_lens[resp_lens < gen_max_resp_len]
                             logger.info(
-                                "[update:%d/gen:%d] Max non-truncated response length: %d / Max response length: %d",
+                                "[step:%d/gen_round_cnt:%d] Max non-truncated response length: %d"
+                                " / Max response length: %d",
                                 self.global_steps,
                                 updating_state.gen_round_cnt,
                                 max_non_truncated_resp_len,
@@ -319,7 +320,8 @@ class RayDAPOTrainer(RayPPOTrainer):
                         traj_bsz = prompt_bsz * self.config.actor_rollout_ref.rollout.n
                         if len(updating_state.batch) < traj_bsz:
                             logger.info(
-                                "[update:%d/gen:%d] # of Traj. (%d) < Traj. Batch Size (%d). Keep generating...",
+                                "[step:%d/gen_round_cnt:%d] # of Traj. (%d) < Traj. Batch Size (%d)."
+                                " Keep generating...",
                                 self.global_steps,
                                 updating_state.gen_round_cnt,
                                 len(updating_state.batch),
