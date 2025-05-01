@@ -219,8 +219,7 @@ class RayDAPOTrainer(RayPPOTrainer):
 
                     traj_mini_bsz = self.config.actor_rollout_ref.actor.ppo_mini_batch_size * self.config.actor_rollout_ref.rollout.n
                     batch.meta_info["mini_batch_loss_token_nums"] = calc_mini_batch_loss_token_nums(
-                        response_ids=batch.batch["responses"],
-                        attention_mask=batch.batch["attention_mask"],
+                        batch_data=batch,
                         traj_mini_bsz=traj_mini_bsz,
                         num_dp_ranks=self.actor_rollout_wg.world_size,
                     )

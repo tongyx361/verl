@@ -27,6 +27,8 @@ from torch import nn
 from torch.optim import Optimizer
 from torch.optim.lr_scheduler import LambdaLR
 
+from verl.protocol import DataProto
+
 try:
     from flash_attn.ops.triton.cross_entropy import cross_entropy_loss
 
@@ -506,13 +508,28 @@ def compute_response_mask(response_ids: torch.Tensor, attention_mask: torch.Tens
     return attention_mask[:, -response_length:]
 
 
-def calc_mini_batch_loss_token_nums(response_ids: torch.Tensor, attention_mask: torch.Tensor, traj_mini_bsz: int, num_dp_ranks: int) -> list[int]:
-    """
+def calc_mini_batch_loss_token_nums(batch_data: DataProto, traj_mini_bsz: int, num_dp_ranks: int) -> list[int]:
+    """Calculate the number of loss tokens in each mini-batch from a batch.
+
     NOTE: Be compatible with
     1. verl.workers.fsdp_workers.ActorRolloutRefWorker.update_actor
     2. verl.workers.fsdp_workers.CriticWorker.update_critic
     TODO: Calculate separate numbers if adopting different strategies for actor and critic
+
+    Args:
+        batch_data: DataProto
+            The batch data to calculate the number of loss tokens.
+        traj_mini_bsz: int
+            The mini-batch size for each trajectory.
+        num_dp_ranks: int
+            The number of data parallel ranks.
+
+    Returns:
+        mini_batch_loss_token_nums: list[int]
+            The number of loss tokens in each mini-batch.
     """
+    response_ids = batch_data.batch["responses"]
+    attention_mask = batch_data.batch["attention_mask"]
     response_mask = compute_response_mask(response_ids=response_ids, attention_mask=attention_mask)
 
     traj_bsz = response_ids.shape[0]
