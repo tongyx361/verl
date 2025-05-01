@@ -12,7 +12,7 @@ num_procs=$((NNODES * n_procs_per_node))
 
 repeat_factor=1
 
-exp_name="dapo-dmlr-qwen2p5-32b-lr${ACTOR_LR}-${num_procs}gpus"
+exp_name="dapo-dmrl-qwen2p5-32b-lr${ACTOR_LR}-${num_procs}gpus"
 
 adv_estimator=grpo
 # Clip epsilons
