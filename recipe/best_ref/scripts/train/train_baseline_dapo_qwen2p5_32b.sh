@@ -10,7 +10,7 @@ project_name='best-ref'
 n_procs_per_node=8
 num_procs=$((NNODES * n_procs_per_node))
 
-repeat_factor=100
+repeat_factor=1
 
 exp_name="dapo-dmlr-qwen2p5-32b-lr${ACTOR_LR}-${num_procs}gpus"
 
