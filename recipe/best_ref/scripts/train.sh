@@ -64,10 +64,10 @@ if [[ "${RECIPE}" =~ "da" ]]; then
     elif [[ "${RECIPE}" =~ "dapo" ]]; then
         adv_estimator=grpo
         actor_lr=1e-6
-        if [[ "${RECIPE}" == "dapo-orig-data" ]]; then
-            repeat_factor=100
-            shuffle_in_batch=False
-        fi
+    fi
+    if [[ "${RECIPE}" =~ "orig-data" ]]; then
+        repeat_factor=100
+        shuffle_in_batch=False
     fi
 elif [ "${RECIPE}" == "simplerl-zoo" ]; then
     # c.f. https://github.com/hkust-nlp/simpleRL-reason?tab=readme-ov-file#training
