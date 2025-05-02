@@ -243,27 +243,13 @@ class RayDAPOTrainer(RayPPOTrainer):
                                 {k: np.array(v) for k, v in reward_extra_infos_dict.items()}
                             )
 
-                        # compute rewards. apply_kl_penalty if available
-                        if self.config.algorithm.use_kl_in_reward:
-                            new_batch, kl_metrics = apply_kl_penalty(
-                                new_batch, kl_ctrl=self.kl_ctrl_in_reward, kl_penalty=self.config.algorithm.kl_penalty
-                            )
-                            # TODO: This will be cleared if we use multiple genenration batches
-                            updating_state.metrics.update(kl_metrics)
-                        else:
-                            new_batch.batch["token_level_rewards"] = new_batch.batch["token_level_scores"]
-
                     if not self.config.algorithm.filter_groups.enable:
                         updating_state.batch = new_batch
                     else:  # NOTE: When prompts after filtering is less than train batch size,
                         # we skip to the next generation batch
                         metric_name = self.config.algorithm.filter_groups.metric
-                        if metric_name == "seq_final_reward":
-                            # Turn to numpy for easier filtering
-                            new_batch.non_tensor_batch["seq_final_reward"] = (
-                                new_batch.batch["token_level_rewards"].sum(dim=-1).numpy()
-                            )
-                        elif metric_name == "seq_reward":
+                        # KL rewards are not supported yet
+                        if metric_name == "seq_reward":
                             new_batch.non_tensor_batch["seq_reward"] = (
                                 new_batch.batch["token_level_scores"].sum(dim=-1).numpy()
                             )
@@ -363,6 +349,16 @@ class RayDAPOTrainer(RayPPOTrainer):
                         with _timer("ref", updating_state.timing_raw):
                             ref_log_prob = self.ref_policy_wg.compute_ref_log_prob(updating_state.batch)
                             updating_state.batch = updating_state.batch.union(ref_log_prob)
+
+                        # compute rewards. apply_kl_penalty if available
+                        if self.config.algorithm.use_kl_in_reward:
+                            new_batch, kl_metrics = apply_kl_penalty(
+                                new_batch, kl_ctrl=self.kl_ctrl_in_reward, kl_penalty=self.config.algorithm.kl_penalty
+                            )
+                            # TODO: This will be cleared if we use multiple genenration batches
+                            updating_state.metrics.update(kl_metrics)
+                        else:
+                            new_batch.batch["token_level_rewards"] = new_batch.batch["token_level_scores"]
 
                     # compute values
                     if self.use_critic:
