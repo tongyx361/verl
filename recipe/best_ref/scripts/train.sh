@@ -16,12 +16,16 @@ if [ "${MODEL_ID}" == "qwen2p5-32b" ]; then
     fsdp_size=64
     gen_tp=2
     gpu_mem_util=0.7
+    actor_train_max_token_num=$((512 * num_procs))
+    infer_max_token_num=$((2048 * num_procs))
 elif [ "${MODEL_ID}" == "qwen2p5-7b" ]; then
     model_name="Qwen2.5-7B"
     sp_size=4 # 28 KV heads
     fsdp_size=8 # In-node
     gen_tp=1
     gpu_mem_util=0.9
+    actor_train_max_token_num=$((2048 * num_procs))
+    infer_max_token_num=$((8192 * num_procs))
 else
     echo "Invalid model ID: ${MODEL_ID}"
     exit 1
@@ -147,8 +151,7 @@ temperature=1.0
 offload=False
 
 use_dynamic_bsz=True
-actor_ppo_max_token_len=$((512 * num_procs))
-infer_ppo_max_token_len=$((2048 * num_procs))
+
 
 test_freq=${save_freq}
 
@@ -204,12 +207,12 @@ python3 -m recipe.dapo.src.main_dapo \
     actor_rollout_ref.actor.kl_loss_type=${kl_loss_type} \
     actor_rollout_ref.actor.use_dynamic_bsz=${use_dynamic_bsz} \
     actor_rollout_ref.actor.ulysses_sequence_parallel_size=${sp_size} \
-    actor_rollout_ref.actor.ppo_max_token_len_per_gpu=${actor_ppo_max_token_len} \
+    actor_rollout_ref.actor.ppo_max_token_len_per_gpu=${actor_train_max_token_num} \
     actor_rollout_ref.rollout.gpu_memory_utilization=${gpu_mem_util} \
     actor_rollout_ref.rollout.tensor_model_parallel_size=${gen_tp} \
     actor_rollout_ref.ref.fsdp_config.param_offload=${offload} \
     actor_rollout_ref.ref.log_prob_use_dynamic_bsz=${use_dynamic_bsz} \
-    actor_rollout_ref.ref.log_prob_max_token_len_per_gpu=${infer_ppo_max_token_len} \
+    actor_rollout_ref.ref.log_prob_max_token_len_per_gpu=${infer_max_token_num} \
     actor_rollout_ref.ref.ulysses_sequence_parallel_size=${sp_size} \
     actor_rollout_ref.rollout.temperature=${temperature} \
     actor_rollout_ref.rollout.n=${n_trajs_per_prompt} \
@@ -223,7 +226,7 @@ python3 -m recipe.dapo.src.main_dapo \
     actor_rollout_ref.rollout.enforce_eager=False \
     actor_rollout_ref.rollout.free_cache_engine=False \
     actor_rollout_ref.rollout.log_prob_use_dynamic_bsz=${use_dynamic_bsz} \
-    actor_rollout_ref.rollout.log_prob_max_token_len_per_gpu=${infer_ppo_max_token_len} \
+    actor_rollout_ref.rollout.log_prob_max_token_len_per_gpu=${infer_max_token_num} \
     trainer.logger=['console','wandb'] \
     trainer.project_name=${project_name} \
     trainer.experiment_name="${exp_name}" \
