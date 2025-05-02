@@ -330,6 +330,8 @@ class RayDAPOTrainer(RayPPOTrainer):
                         updating_state.batch.batch["attention_mask"], dim=-1
                     ).tolist()
 
+                    updating_state.batch.batch["response_mask"] = compute_response_mask(updating_state.batch)
+
                     # recompute old_log_probs
                     with _timer("old_log_prob", updating_state.timing_raw):
                         old_log_prob = self.actor_rollout_wg.compute_log_prob(updating_state.batch)
