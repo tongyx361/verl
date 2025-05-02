@@ -244,7 +244,7 @@ EOF
 if [ "${RAY_JOB_SUBMIT}" == "1" ]; then
     ray job submit --no-wait --runtime-env="${RUNTIME_ENV}" \
         --working-dir "${WORKING_DIR}" \
-        -- "${py_cmd}"
+        -- eval "${py_cmd}"
 else
     eval "${py_cmd}"
 fi
