@@ -354,13 +354,17 @@ class RayDAPOTrainer(RayPPOTrainer):
 
                         # compute rewards. apply_kl_penalty if available
                         if self.config.algorithm.use_kl_in_reward:
-                            new_batch, kl_metrics = apply_kl_penalty(
-                                new_batch, kl_ctrl=self.kl_ctrl_in_reward, kl_penalty=self.config.algorithm.kl_penalty
+                            updating_state.batch, kl_metrics = apply_kl_penalty(
+                                updating_state.batch,
+                                kl_ctrl=self.kl_ctrl_in_reward,
+                                kl_penalty=self.config.algorithm.kl_penalty,
                             )
                             # TODO: This will be cleared if we use multiple genenration batches
                             updating_state.metrics.update(kl_metrics)
                         else:
-                            new_batch.batch["token_level_rewards"] = new_batch.batch["token_level_scores"]
+                            updating_state.batch.batch["token_level_rewards"] = updating_state.batch.batch[
+                                "token_level_scores"
+                            ]
 
                     # compute values
                     if self.use_critic:
