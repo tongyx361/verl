@@ -346,6 +346,7 @@ class RayDAPOTrainer(RayPPOTrainer):
                         old_log_prob.batch.pop("entropys")
                         updating_state.batch = updating_state.batch.union(old_log_prob)
 
+                    token_level_rewards = updating_state.batch.batch["token_level_scores"]
                     if self.use_reference_policy:
                         # compute reference log_prob
                         with _timer("ref", updating_state.timing_raw):
@@ -354,17 +355,14 @@ class RayDAPOTrainer(RayPPOTrainer):
 
                         # compute rewards. apply_kl_penalty if available
                         if self.config.algorithm.use_kl_in_reward:
-                            updating_state.batch, kl_metrics = apply_kl_penalty(
+                            token_level_rewards, kl_metrics = apply_kl_penalty(
                                 updating_state.batch,
                                 kl_ctrl=self.kl_ctrl_in_reward,
                                 kl_penalty=self.config.algorithm.kl_penalty,
                             )
                             # TODO: This will be cleared if we use multiple genenration batches
                             updating_state.metrics.update(kl_metrics)
-                        else:
-                            updating_state.batch.batch["token_level_rewards"] = updating_state.batch.batch[
-                                "token_level_scores"
-                            ]
+                    updating_state.batch.batch["token_level_rewards"] = token_level_rewards
 
                     # compute values
                     if self.use_critic:
