@@ -58,7 +58,7 @@ if [[ "${RECIPE}" =~ "da" ]]; then
     kl_loss_type=mse
     # Entropy regularization
     entropy_coeff=0
-    if [ "${RECIPE}" == "darloo" ]; then
+    if [[ "${RECIPE}" =~ "darloo" ]]; then
         adv_estimator=rloo
         actor_lr=2e-6
     elif [[ "${RECIPE}" =~ "dapo" ]]; then
