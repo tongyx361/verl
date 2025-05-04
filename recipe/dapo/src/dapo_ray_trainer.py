@@ -149,13 +149,10 @@ class RayDAPOTrainer(RayPPOTrainer):
         if os.path.exists(extra_info_path):
             with open(extra_info_path) as f:
                 extra_info = json.load(f)
-        else:
-            extra_info = {}
-
-        if "qualified_rate" in extra_info:
-            self.updating_state.qualified_rate = extra_info["qualified_rate"]
-        if "sampling_params" in extra_info:
-            self.generation_state.sampling_params = extra_info["sampling_params"]
+            if "qualified_rate" in extra_info:
+                self.updating_state.qualified_rate = extra_info["qualified_rate"]
+            if "sampling_params" in extra_info:
+                self.generation_state.sampling_params = extra_info["sampling_params"]
 
     def _save_checkpoint(self):
         """Overridden method from parent class to add state tracking to checkpoint"""
