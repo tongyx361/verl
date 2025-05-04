@@ -432,14 +432,14 @@ class RayDAPOTrainer(RayPPOTrainer):
                                 max_non_truncated_resp_len,
                                 gen_max_resp_len,
                             )
-                            max_total_len = self.config.data.dynamic_max_resp_len.max_total_len
-                            max_prompt_len = self.config.data.max_prompt_length
+                            max_model_len = self.config.actor_rollout_ref.rollout.max_model_len
+                            max_prompt_len = self.config.actor_rollout_ref.rollout.prompt_length
                             max_tokens = min(
                                 int(
                                     max_non_truncated_resp_len
                                     * (1 + self.config.data.dynamic_max_resp_len.extending_tolerance)
                                 ),
-                                max_total_len - max_prompt_len,
+                                max_model_len - max_prompt_len,
                             )
                             self.generation_state.sampling_params["max_tokens"] = max_tokens
 
