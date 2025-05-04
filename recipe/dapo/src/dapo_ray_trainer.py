@@ -16,6 +16,7 @@ FSDP PPO Trainer with Ray-based single controller.
 This trainer supports model-agonistic model initialization with huggingface
 """
 
+import json
 import logging
 import os
 import uuid
@@ -45,6 +46,7 @@ from verl.trainer.ppo.ray_trainer import (
     compute_advantage,
     compute_response_mask,
 )
+from verl.utils.checkpoint.checkpoint_manager import find_latest_ckpt_path
 
 logger = logging.getLogger(__name__)
 logger.setLevel(os.getenv("VERL_PPO_LOGGING_LEVEL", "WARN"))
@@ -85,6 +87,142 @@ class RayDAPOTrainer(RayPPOTrainer):
     Note that this trainer runs on the driver process on a single CPU/GPU node.
     """
 
+    def _load_checkpoint(self):
+        if self.config.trainer.resume_mode == "disable":
+            return 0
+
+        # load from hdfs
+        if self.config.trainer.default_hdfs_dir is not None:
+            raise NotImplementedError("load from hdfs is not implemented yet")
+        else:
+            checkpoint_folder = self.config.trainer.default_local_dir  # TODO: check path
+            if not os.path.isabs(checkpoint_folder):
+                working_dir = os.getcwd()
+                checkpoint_folder = os.path.join(working_dir, checkpoint_folder)
+            global_step_folder = find_latest_ckpt_path(checkpoint_folder)  # None if no latest
+
+        # find global_step_folder
+        if self.config.trainer.resume_mode == "auto":
+            if global_step_folder is None:
+                print("Training from scratch")
+                return 0
+        else:
+            if self.config.trainer.resume_mode == "resume_path":
+                assert isinstance(self.config.trainer.resume_from_path, str), "resume ckpt must be str type"
+                assert "global_step_" in self.config.trainer.resume_from_path, (
+                    "resume ckpt must specify the global_steps"
+                )
+                global_step_folder = self.config.trainer.resume_from_path
+                if not os.path.isabs(global_step_folder):
+                    working_dir = os.getcwd()
+                    global_step_folder = os.path.join(working_dir, global_step_folder)
+        print(f"Load from checkpoint folder: {global_step_folder}")
+        # set global step
+        self.global_steps = int(global_step_folder.split("global_step_")[-1])
+
+        print(f"Setting global step to {self.global_steps}")
+        print(f"Resuming from {global_step_folder}")
+
+        actor_path = os.path.join(global_step_folder, "actor")
+        critic_path = os.path.join(global_step_folder, "critic")
+        # load actor
+        self.actor_rollout_wg.load_checkpoint(
+            actor_path, del_local_after_load=self.config.trainer.del_local_ckpt_after_load
+        )
+        # load critic
+        if self.use_critic:
+            self.critic_wg.load_checkpoint(
+                critic_path, del_local_after_load=self.config.trainer.del_local_ckpt_after_load
+            )
+
+        # load dataloader,
+        # TODO: from remote not implemented yet
+        dataloader_local_path = os.path.join(global_step_folder, "data.pt")
+        if os.path.exists(dataloader_local_path):
+            dataloader_state_dict = torch.load(dataloader_local_path, weights_only=False)
+            self.train_dataloader.load_state_dict(dataloader_state_dict)
+        else:
+            print(f"Warning: No dataloader state found at {dataloader_local_path}, will start from scratch")
+
+        # load extra info
+        extra_info_path = os.path.join(global_step_folder, "extra_info.json")
+        if os.path.exists(extra_info_path):
+            with open(extra_info_path) as f:
+                extra_info = json.load(f)
+        else:
+            extra_info = {}
+
+        if "qualified_rate" in extra_info:
+            self.updating_state.qualified_rate = extra_info["qualified_rate"]
+        if "sampling_params" in extra_info:
+            self.generation_state.sampling_params = extra_info["sampling_params"]
+
+    def _save_checkpoint(self):
+        """Overridden method from parent class to add state tracking to checkpoint"""
+
+        # path: given_path + `/global_step_{global_steps}` + `/actor`
+        local_global_step_folder = os.path.join(
+            self.config.trainer.default_local_dir, f"global_step_{self.global_steps}"
+        )
+
+        print(f"local_global_step_folder: {local_global_step_folder}")
+        actor_local_path = os.path.join(local_global_step_folder, "actor")
+
+        actor_remote_path = (
+            None
+            if self.config.trainer.default_hdfs_dir is None
+            else os.path.join(self.config.trainer.default_hdfs_dir, f"global_step_{self.global_steps}", "actor")
+        )
+
+        remove_previous_ckpt_in_save = self.config.trainer.get("remove_previous_ckpt_in_save", False)
+        if remove_previous_ckpt_in_save:
+            print(
+                "Warning: remove_previous_ckpt_in_save is deprecated,"
+                + " set max_actor_ckpt_to_keep=1 and max_critic_ckpt_to_keep=1 instead"
+            )
+        max_actor_ckpt_to_keep = (
+            self.config.trainer.get("max_actor_ckpt_to_keep", None) if not remove_previous_ckpt_in_save else 1
+        )
+        max_critic_ckpt_to_keep = (
+            self.config.trainer.get("max_critic_ckpt_to_keep", None) if not remove_previous_ckpt_in_save else 1
+        )
+
+        self.actor_rollout_wg.save_checkpoint(
+            actor_local_path, actor_remote_path, self.global_steps, max_ckpt_to_keep=max_actor_ckpt_to_keep
+        )
+
+        if self.use_critic:
+            critic_local_path = os.path.join(local_global_step_folder, "critic")
+            critic_remote_path = (
+                None
+                if self.config.trainer.default_hdfs_dir is None
+                else os.path.join(self.config.trainer.default_hdfs_dir, f"global_step_{self.global_steps}", "critic")
+            )
+            self.critic_wg.save_checkpoint(
+                critic_local_path, critic_remote_path, self.global_steps, max_ckpt_to_keep=max_critic_ckpt_to_keep
+            )
+
+        # save dataloader
+        dataloader_local_path = os.path.join(local_global_step_folder, "data.pt")
+        dataloader_state_dict = self.train_dataloader.state_dict()
+        torch.save(dataloader_state_dict, dataloader_local_path)
+
+        # latest checkpointed iteration tracker (for atomic usage)
+        local_latest_checkpointed_iteration = os.path.join(
+            self.config.trainer.default_local_dir, "latest_checkpointed_iteration.txt"
+        )
+        with open(local_latest_checkpointed_iteration, "w") as f:
+            f.write(str(self.global_steps))
+
+        # latest checkpointed iteration tracker (for atomic usage)
+        extra_info = {
+            # "latest_checkpointed_iteration": self.global_steps,
+            "qualified_rate": self.updating_state.qualified_rate,
+            "sampling_params": self.generation_state.sampling_params,
+        }
+        with open(os.path.join(local_global_step_folder, "extra_info.json"), "w") as f:
+            json.dump(extra_info, f)
+
     def fit(self) -> None:
         """
         The training loop of PPO.
@@ -104,7 +242,10 @@ class RayDAPOTrainer(RayPPOTrainer):
         )
 
         self.global_steps = 0
-
+        self.updating_state = UpdatingState()
+        self.generation_state = GenerationState(
+            sampling_params={"max_tokens": self.config.actor_rollout_ref.rollout.response_length}
+        )
         # load checkpoint before doing anything
         self._load_checkpoint()
 
@@ -127,11 +268,6 @@ class RayDAPOTrainer(RayPPOTrainer):
         self.global_steps += 1
         last_val_metrics = None
 
-        updating_state = UpdatingState()
-        gen_state = GenerationState(
-            sampling_params={"max_tokens": self.config.actor_rollout_ref.rollout.response_length}
-        )
-
         for epoch in range(self.config.trainer.total_epochs):
             for batch_dict in self.train_dataloader:
                 data_state = self.train_dataloader.state_dict()
@@ -140,39 +276,41 @@ class RayDAPOTrainer(RayPPOTrainer):
                 new_prompt_batch = DataProto.from_single_dict(batch_dict)
 
                 # Initalize generation-level state
-                gen_state.prompt_batch = (
-                    DataProto.concat([gen_state.prompt_batch, new_prompt_batch])
-                    if gen_state.prompt_batch is not None
+                self.generation_state.prompt_batch = (
+                    DataProto.concat([self.generation_state.prompt_batch, new_prompt_batch])
+                    if self.generation_state.prompt_batch is not None
                     else new_prompt_batch
                 )
 
                 prompt_bsz = self.config.data.train_batch_size
                 estim_num_prompt_needed = (
-                    -int(-1 / updating_state.qualified_rate) * prompt_bsz if updating_state.qualified_rate > 0 else 0
+                    -int(-1 / self.updating_state.qualified_rate) * prompt_bsz
+                    if self.updating_state.qualified_rate > 0
+                    else 0
                 )
-                estim_num_remaining_prompt_needed = estim_num_prompt_needed - updating_state.gen_prompt_cnt
+                estim_num_remaining_prompt_needed = estim_num_prompt_needed - self.updating_state.gen_prompt_cnt
                 logger.info(
                     "[step:%d/gen_round_cnt:%d] # of Prompts to Gen. (%d) <= # of Remaining Prompts Needed (%d)?",
                     self.global_steps,
-                    updating_state.gen_round_cnt,
-                    len(gen_state.prompt_batch),
+                    self.updating_state.gen_round_cnt,
+                    len(self.generation_state.prompt_batch),
                     int(estim_num_remaining_prompt_needed * self.config.algorithm.filter_groups.oversampling_factor),
                 )
-                if len(gen_state.prompt_batch) <= int(
+                if len(self.generation_state.prompt_batch) <= int(
                     estim_num_remaining_prompt_needed * self.config.algorithm.filter_groups.oversampling_factor
                 ):
                     logger.info("Keep loading...")
                     continue
 
-                updating_state.gen_prompt_cnt += len(gen_state.prompt_batch)
-                updating_state.gen_round_cnt += 1
+                self.updating_state.gen_prompt_cnt += len(self.generation_state.prompt_batch)
+                self.updating_state.gen_round_cnt += 1
 
                 # pop those keys for generation
                 batch_keys = ["input_ids", "attention_mask", "position_ids"]
                 non_tensor_batch_keys = ["raw_prompt_ids"]
-                if "multi_modal_inputs" in gen_state.prompt_batch.non_tensor_batch.keys():
+                if "multi_modal_inputs" in self.generation_state.prompt_batch.non_tensor_batch.keys():
                     batch_keys.extend(["multi_modal_data", "multi_modal_inputs"])
-                gen_batch = gen_state.prompt_batch.pop(
+                gen_batch = self.generation_state.prompt_batch.pop(
                     batch_keys=batch_keys, non_tensor_batch_keys=non_tensor_batch_keys
                 )
                 if gen_batch.meta_info.get("sampling_params") is None:
@@ -183,39 +321,41 @@ class RayDAPOTrainer(RayPPOTrainer):
 
                 is_last_step = self.global_steps >= self.total_training_steps
 
-                gen_batch.meta_info["sampling_params"] = gen_state.sampling_params
-                with _timer("step", updating_state.timing_raw):
+                gen_batch.meta_info["sampling_params"] = self.generation_state.sampling_params
+                with _timer("step", self.updating_state.timing_raw):
                     # generate a batch
-                    with _timer("gen", updating_state.timing_raw):
+                    with _timer("gen", self.updating_state.timing_raw):
                         gen_batch_output = self.actor_rollout_wg.generate_sequences(gen_batch)
 
                     if self.config.algorithm.adv_estimator == AdvantageEstimator.REMAX:
-                        with _timer("gen_max", updating_state.timing_raw):
+                        with _timer("gen_max", self.updating_state.timing_raw):
                             gen_baseline_batch = deepcopy(gen_batch)
                             gen_baseline_batch.meta_info["do_sample"] = False
                             gen_baseline_output = self.actor_rollout_wg.generate_sequences(gen_baseline_batch)
 
-                            gen_state.prompt_batch = gen_state.prompt_batch.union(gen_baseline_output)
-                            reward_baseline_tensor = self.reward_fn(gen_state.prompt_batch)
+                            self.generation_state.prompt_batch = self.generation_state.prompt_batch.union(
+                                gen_baseline_output
+                            )
+                            reward_baseline_tensor = self.reward_fn(self.generation_state.prompt_batch)
                             reward_baseline_tensor = reward_baseline_tensor.sum(dim=-1)
 
-                            gen_state.prompt_batch.pop(batch_keys=list(gen_baseline_output.batch.keys()))
+                            self.generation_state.prompt_batch.pop(batch_keys=list(gen_baseline_output.batch.keys()))
 
-                            gen_state.prompt_batch.batch["reward_baselines"] = reward_baseline_tensor
+                            self.generation_state.prompt_batch.batch["reward_baselines"] = reward_baseline_tensor
 
                             del gen_baseline_batch, gen_baseline_output
 
-                    gen_state.prompt_batch.non_tensor_batch["uid"] = np.array(
-                        [str(uuid.uuid4()) for _ in range(len(gen_state.prompt_batch.batch))], dtype=object
+                    self.generation_state.prompt_batch.non_tensor_batch["uid"] = np.array(
+                        [str(uuid.uuid4()) for _ in range(len(self.generation_state.prompt_batch.batch))], dtype=object
                     )
                     # repeat to align with repeated responses in rollout
-                    new_batch = gen_state.prompt_batch.repeat(
+                    new_batch = self.generation_state.prompt_batch.repeat(
                         repeat_times=self.config.actor_rollout_ref.rollout.n, interleave=True
                     )
-                    gen_state.reset()
+                    self.generation_state.reset()
                     new_batch = new_batch.union(gen_batch_output)
 
-                    with _timer("reward", updating_state.timing_raw):
+                    with _timer("reward", self.updating_state.timing_raw):
                         # compute scores. Support both model and function-based.
                         # We first compute the scores using reward model. Then, we call reward_fn to combine
                         # the results from reward model and rule-based results.
@@ -244,7 +384,7 @@ class RayDAPOTrainer(RayPPOTrainer):
                             )
 
                     if not self.config.algorithm.filter_groups.enable:
-                        updating_state.batch = new_batch
+                        self.updating_state.batch = new_batch
                     else:  # NOTE: When prompts after filtering is less than train batch size,
                         # we skip to the next generation batch
                         metric_name = self.config.algorithm.filter_groups.metric
@@ -277,13 +417,13 @@ class RayDAPOTrainer(RayPPOTrainer):
                                 kept_traj_idxs.append(idx)
 
                         new_batch = new_batch[kept_traj_idxs]
-                        updating_state.batch = (
-                            DataProto.concat([updating_state.batch, new_batch])
-                            if updating_state.batch is not None
+                        self.updating_state.batch = (
+                            DataProto.concat([self.updating_state.batch, new_batch])
+                            if self.updating_state.batch is not None
                             else new_batch
                         )
                         if self.config.data.dynamic_max_resp_len.enable:
-                            response_mask = compute_response_mask(updating_state.batch)
+                            response_mask = compute_response_mask(self.updating_state.batch)
                             resp_lens = response_mask.sum(dim=-1)
                             gen_max_resp_len = resp_lens.max().item()
                             max_non_truncated_resp_len = resp_lens[resp_lens < gen_max_resp_len].max().item()
@@ -291,7 +431,7 @@ class RayDAPOTrainer(RayPPOTrainer):
                                 "[step:%d/gen_round_cnt:%d] Max non-truncated response length: %d"
                                 " / Max response length: %d",
                                 self.global_steps,
-                                updating_state.gen_round_cnt,
+                                self.updating_state.gen_round_cnt,
                                 max_non_truncated_resp_len,
                                 gen_max_resp_len,
                             )
@@ -299,82 +439,84 @@ class RayDAPOTrainer(RayPPOTrainer):
                                 max_non_truncated_resp_len
                                 * (1 + self.config.data.dynamic_max_resp_len.extending_tolerance)
                             )
-                            gen_state.sampling_params["max_tokens"] = max_tokens
+                            self.generation_state.sampling_params["max_tokens"] = max_tokens
 
                         # Ceiling
-                        updating_state.gen_traj_cnt += len(gen_batch_output)
-                        updating_state.qualified_rate = len(updating_state.batch) / updating_state.gen_traj_cnt
+                        self.updating_state.gen_traj_cnt += len(gen_batch_output)
+                        self.updating_state.qualified_rate = (
+                            len(self.updating_state.batch) / self.updating_state.gen_traj_cnt
+                        )
                         traj_bsz = prompt_bsz * self.config.actor_rollout_ref.rollout.n
-                        if len(updating_state.batch) < traj_bsz:
+                        if len(self.updating_state.batch) < traj_bsz:
                             logger.info(
                                 "[step:%d/gen_round_cnt:%d] # of Traj. (%d) < Traj. Batch Size (%d)."
                                 " Keep generating...",
                                 self.global_steps,
-                                updating_state.gen_round_cnt,
-                                len(updating_state.batch),
+                                self.updating_state.gen_round_cnt,
+                                len(self.updating_state.batch),
                                 traj_bsz,
                             )
                             continue
                         else:  # Align the batch
-                            updating_state.batch = updating_state.batch[:traj_bsz]
+                            self.updating_state.batch = self.updating_state.batch[:traj_bsz]
 
-                    assert updating_state.batch is not None
+                    assert self.updating_state.batch is not None
                     # balance the number of valid tokens on each dp rank.
                     # Note that this breaks the order of data inside the batch.
                     # Please take care when you implement group based adv computation such as GRPO and rloo
                     if self.config.trainer.balance_batch:
-                        self._balance_batch(updating_state.batch, metrics=updating_state.metrics)
+                        self._balance_batch(self.updating_state.batch, metrics=self.updating_state.metrics)
 
                     # compute global_valid tokens
-                    updating_state.batch.meta_info["global_token_num"] = torch.sum(
-                        updating_state.batch.batch["attention_mask"], dim=-1
+                    self.updating_state.batch.meta_info["global_token_num"] = torch.sum(
+                        self.updating_state.batch.batch["attention_mask"], dim=-1
                     ).tolist()
 
-                    updating_state.batch.batch["response_mask"] = compute_response_mask(updating_state.batch)
+                    self.updating_state.batch.batch["response_mask"] = compute_response_mask(self.updating_state.batch)
 
                     # recompute old_log_probs
-                    with _timer("old_log_prob", updating_state.timing_raw):
-                        old_log_prob = self.actor_rollout_wg.compute_log_prob(updating_state.batch)
+                    with _timer("old_log_prob", self.updating_state.timing_raw):
+                        old_log_prob = self.actor_rollout_wg.compute_log_prob(self.updating_state.batch)
                         entropys = old_log_prob.batch["entropys"]
-                        response_masks = updating_state.batch.batch["response_mask"]
+                        response_masks = self.updating_state.batch.batch["response_mask"]
                         loss_agg_mode = self.config.actor_rollout_ref.actor.loss_agg_mode
                         entropy_loss = agg_loss(
                             loss_mat=entropys, loss_mask=response_masks, loss_agg_mode=loss_agg_mode
                         )
                         old_log_prob_metrics = {"actor/entropy_loss": entropy_loss.detach().item()}
-                        updating_state.metrics.update(old_log_prob_metrics)
+                        self.updating_state.metrics.update(old_log_prob_metrics)
                         old_log_prob.batch.pop("entropys")
-                        updating_state.batch = updating_state.batch.union(old_log_prob)
+                        self.updating_state.batch = self.updating_state.batch.union(old_log_prob)
 
-                    token_level_rewards = updating_state.batch.batch["token_level_scores"]
+                    token_level_rewards = self.updating_state.batch.batch["token_level_scores"]
                     if self.use_reference_policy:
                         # compute reference log_prob
-                        with _timer("ref", updating_state.timing_raw):
-                            ref_log_prob = self.ref_policy_wg.compute_ref_log_prob(updating_state.batch)
-                            updating_state.batch = updating_state.batch.union(ref_log_prob)
+                        with _timer("ref", self.updating_state.timing_raw):
+                            ref_log_prob = self.ref_policy_wg.compute_ref_log_prob(self.updating_state.batch)
+                            self.updating_state.batch = self.updating_state.batch.union(ref_log_prob)
 
                         # compute rewards. apply_kl_penalty if available
                         if self.config.algorithm.use_kl_in_reward:
                             token_level_rewards, kl_metrics = apply_kl_penalty(
-                                updating_state.batch,
+                                self.updating_state.batch,
                                 kl_ctrl=self.kl_ctrl_in_reward,
                                 kl_penalty=self.config.algorithm.kl_penalty,
                             )
                             # TODO: This will be cleared if we use multiple genenration batches
-                            updating_state.metrics.update(kl_metrics)
-                    updating_state.batch.batch["token_level_rewards"] = token_level_rewards
+                            self.updating_state.metrics.update(kl_metrics)
+                    self.updating_state.batch.batch["token_level_rewards"] = token_level_rewards
 
                     # compute values
                     if self.use_critic:
-                        with _timer("values", updating_state.timing_raw):
-                            values = self.critic_wg.compute_values(updating_state.batch)
-                            updating_state.batch = updating_state.batch.union(values)
+                        with _timer("values", self.updating_state.timing_raw):
+                            values = self.critic_wg.compute_values(self.updating_state.batch)
+                            self.updating_state.batch = self.updating_state.batch.union(values)
 
-                    with _timer("adv", updating_state.timing_raw):
+                    with _timer("adv", self.updating_state.timing_raw):
                         # compute advantages, executed on the driver process
                         norm_adv_by_std_in_grpo = self.config.algorithm.get("norm_adv_by_std_in_grpo", True)
-                        updating_state.batch = compute_advantage(
-                            updating_state.batch,
+                        self.updating_state.batch = compute_advantage(
+                            self.updating_state.batch,
                             adv_estimator=self.config.algorithm.adv_estimator,
                             gamma=self.config.algorithm.gamma,
                             lam=self.config.algorithm.lam,
@@ -384,18 +526,18 @@ class RayDAPOTrainer(RayPPOTrainer):
 
                     # update critic
                     if self.use_critic:
-                        with _timer("update_critic", updating_state.timing_raw):
-                            critic_output = self.critic_wg.update_critic(updating_state.batch)
+                        with _timer("update_critic", self.updating_state.timing_raw):
+                            critic_output = self.critic_wg.update_critic(self.updating_state.batch)
                         critic_output_metrics = reduce_metrics(critic_output.meta_info["metrics"])
-                        updating_state.metrics.update(critic_output_metrics)
+                        self.updating_state.metrics.update(critic_output_metrics)
 
                     # implement critic warmup
                     if self.config.trainer.critic_warmup <= self.global_steps:
                         # update actor
-                        with _timer("update_actor", updating_state.timing_raw):
-                            actor_output = self.actor_rollout_wg.update_actor(updating_state.batch)
+                        with _timer("update_actor", self.updating_state.timing_raw):
+                            actor_output = self.actor_rollout_wg.update_actor(self.updating_state.batch)
                         actor_output_metrics = reduce_metrics(actor_output.meta_info["metrics"])
-                        updating_state.metrics.update(actor_output_metrics)
+                        self.updating_state.metrics.update(actor_output_metrics)
 
                 # validate
                 if (
@@ -403,45 +545,45 @@ class RayDAPOTrainer(RayPPOTrainer):
                     and self.config.trainer.test_freq > 0
                     and (is_last_step or self.global_steps % self.config.trainer.test_freq == 0)
                 ):
-                    with _timer("testing", updating_state.timing_raw):
+                    with _timer("testing", self.updating_state.timing_raw):
                         val_metrics = self._validate()
                         if is_last_step:
                             last_val_metrics = val_metrics
-                    updating_state.metrics.update(val_metrics)
+                    self.updating_state.metrics.update(val_metrics)
 
                 if self.config.trainer.save_freq > 0 and (
                     is_last_step or self.global_steps % self.config.trainer.save_freq == 0
                 ):
-                    with _timer("save_checkpoint", updating_state.timing_raw):
+                    with _timer("save_checkpoint", self.updating_state.timing_raw):
                         self._save_checkpoint()
 
                 # collect metrics
-                assert updating_state.batch is not None
-                updating_state.metrics.update(
-                    compute_data_metrics(batch=updating_state.batch, use_critic=self.use_critic)
+                assert self.updating_state.batch is not None
+                self.updating_state.metrics.update(
+                    compute_data_metrics(batch=self.updating_state.batch, use_critic=self.use_critic)
                 )
-                updating_state.metrics.update(
-                    compute_timing_metrics(batch=updating_state.batch, timing_raw=updating_state.timing_raw)
+                self.updating_state.metrics.update(
+                    compute_timing_metrics(batch=self.updating_state.batch, timing_raw=self.updating_state.timing_raw)
                 )
                 # TODO: implement actual tflpo and theoretical tflpo
                 n_gpus = self.resource_pool_manager.get_n_gpus()
-                updating_state.metrics.update(
+                self.updating_state.metrics.update(
                     compute_throughout_metrics(
-                        batch=updating_state.batch, timing_raw=updating_state.timing_raw, n_gpus=n_gpus
+                        batch=self.updating_state.batch, timing_raw=self.updating_state.timing_raw, n_gpus=n_gpus
                     )
                 )
 
-                updating_state.metrics.update(
+                self.updating_state.metrics.update(
                     {
-                        "train/gen_round_cnt": updating_state.gen_round_cnt,
-                        "train/gen_prompt_cnt": updating_state.gen_prompt_cnt,
-                        "train/gen_traj_cnt": updating_state.gen_traj_cnt,
-                        "train/qualified_rate": updating_state.qualified_rate,
+                        "train/gen_round_cnt": self.updating_state.gen_round_cnt,
+                        "train/gen_prompt_cnt": self.updating_state.gen_prompt_cnt,
+                        "train/gen_traj_cnt": self.updating_state.gen_traj_cnt,
+                        "train/qualified_rate": self.updating_state.qualified_rate,
                     }
                 )
 
                 # TODO: make a canonical logger that supports various backend
-                tracker.log(data=updating_state.metrics, step=self.global_steps)
+                tracker.log(data=self.updating_state.metrics, step=self.global_steps)
 
                 if is_last_step:
                     pprint(f"Final validation metrics: {last_val_metrics}")
@@ -450,4 +592,4 @@ class RayDAPOTrainer(RayPPOTrainer):
 
                 progress_bar.update(1)
                 self.global_steps += 1
-                updating_state.reset()
+                self.updating_state.reset()
