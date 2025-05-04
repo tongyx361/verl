@@ -310,11 +310,6 @@ class RayDAPOTrainer(RayPPOTrainer):
                 gen_batch = self.generation_state.prompt_batch.pop(
                     batch_keys=batch_keys, non_tensor_batch_keys=non_tensor_batch_keys
                 )
-                if gen_batch.meta_info.get("sampling_params") is None:
-                    gen_batch.meta_info["sampling_params"] = {}
-                sampling_params = gen_batch.meta_info["sampling_params"]
-                if sampling_params.get("max_tokens") is None:
-                    sampling_params["max_tokens"] = self.config.actor_rollout_ref.rollout.response_length
 
                 is_last_step = self.global_steps >= self.total_training_steps
 
