@@ -16,7 +16,7 @@ if [ "${MODEL_ID}" == "qwen2p5-32b" ]; then
     sp_size=8 # In-node
     fsdp_size=64
     gen_tp=4
-    gpu_mem_util=0.9
+    gpu_mem_util=0.8
     actor_train_max_token_num=$((512 * num_procs))
     infer_max_token_num=$((2048 * num_procs))
 elif [ "${MODEL_ID}" == "qwen2p5-7b" ]; then
@@ -26,8 +26,8 @@ elif [ "${MODEL_ID}" == "qwen2p5-7b" ]; then
     fsdp_size=8 # In-node
     gen_tp=1
     gpu_mem_util=0.9
-    actor_train_max_token_num=$((2048 * num_procs))
-    infer_max_token_num=$((8192 * num_procs))
+    actor_train_max_token_num=$((1024 * num_procs))
+    infer_max_token_num=$((4096 * num_procs))
 else
     echo "Invalid model ID: ${MODEL_ID}"
     exit 1
