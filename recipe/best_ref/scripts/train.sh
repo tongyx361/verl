@@ -12,6 +12,7 @@ num_procs=$((NNODES * n_procs_per_node))
 MODEL_ID=${MODEL_ID:-"qwen2p5-32b"}
 if [ "${MODEL_ID}" == "qwen2p5-32b" ]; then
     model_name="Qwen2.5-32B"
+    max_model_len=$((1024 * 128))
     sp_size=8 # In-node
     fsdp_size=64
     gen_tp=4
@@ -20,6 +21,7 @@ if [ "${MODEL_ID}" == "qwen2p5-32b" ]; then
     infer_max_token_num=$((2048 * num_procs))
 elif [ "${MODEL_ID}" == "qwen2p5-7b" ]; then
     model_name="Qwen2.5-7B"
+    max_model_len=$((1024 * 128))
     sp_size=4 # 28 KV heads
     fsdp_size=8 # In-node
     gen_tp=1
@@ -212,6 +214,7 @@ python3 -m recipe.dapo.src.main_dapo \
     actor_rollout_ref.ref.log_prob_use_dynamic_bsz=${use_dynamic_bsz} \
     actor_rollout_ref.ref.log_prob_max_token_len_per_gpu=${infer_max_token_num} \
     actor_rollout_ref.ref.ulysses_sequence_parallel_size=${sp_size} \
+    actor_rollout_ref.ref.max_model_len=${max_model_len} \
     actor_rollout_ref.rollout.temperature=${temperature} \
     actor_rollout_ref.rollout.n=${n_trajs_per_prompt} \
     actor_rollout_ref.rollout.top_p=1.0 \
