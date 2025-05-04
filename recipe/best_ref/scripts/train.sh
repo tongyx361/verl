@@ -14,8 +14,8 @@ if [ "${MODEL_ID}" == "qwen2p5-32b" ]; then
     model_name="Qwen2.5-32B"
     sp_size=8 # In-node
     fsdp_size=64
-    gen_tp=2
-    gpu_mem_util=0.7
+    gen_tp=4
+    gpu_mem_util=0.9
     actor_train_max_token_num=$((512 * num_procs))
     infer_max_token_num=$((2048 * num_procs))
 elif [ "${MODEL_ID}" == "qwen2p5-7b" ]; then
