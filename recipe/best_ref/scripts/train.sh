@@ -128,6 +128,7 @@ VAL_BEFORE_TRAIN=${VAL_BEFORE_TRAIN:-"${val_before_train}"}
 ACTOR_LR=${ACTOR_LR:-${actor_lr}}
 TRAIN_BS=${TRAIN_BS:-"${train_bs}"}
 N_UPDATES_PER_BATCH=${N_UPDATES_PER_BATCH:-${n_updates_per_batch}}
+INIT_MAX_RESP_LEN=${INIT_MAX_RESP_LEN:-${INIT_MAX_RESP_LEN}}
 # Ray
 RAY_JOB_SUBMIT=${RAY_JOB_SUBMIT:-"1"}
 RAY_ADDRESS=${RAY_ADDRESS:-"http://localhost:8265"}
@@ -220,7 +221,6 @@ python3 -m recipe.dapo.src.main_dapo \
     actor_rollout_ref.rollout.val_kwargs.n=1 \
     actor_rollout_ref.rollout.val_kwargs.do_sample=True \
     actor_rollout_ref.rollout.enable_chunked_prefill=True \
-    actor_rollout_ref.rollout.max_num_batched_tokens=$((max_prompt_length + max_response_length)) \
     actor_rollout_ref.rollout.enforce_eager=False \
     actor_rollout_ref.rollout.free_cache_engine=False \
     actor_rollout_ref.rollout.log_prob_use_dynamic_bsz=${use_dynamic_bsz} \
