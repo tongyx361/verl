@@ -108,14 +108,11 @@ fi
 # Test
 TEST=${TEST:-"0"}
 if [ "${TEST}" != "1" ]; then
-    max_prompt_length=$((1024 * 2))
-    max_response_length=$((1024 * 20))
+    max_response_length=$((1024 * 128)) # Qwen2.5
     val_before_train=True
     resume_mode=auto
     save_freq=5
 else
-    max_prompt_length=$((1024 * 2))
-    max_response_length=$((1024 * 2))
     n_trajs_per_prompt=2
     n_updates_per_batch=2
     train_bs=${num_procs}
@@ -147,6 +144,7 @@ project_name='best-ref'
 ppo_mini_batch_size=$((TRAIN_BS / N_UPDATES_PER_BATCH))
 [ "${TEST}" == "1" ] && ppo_mini_batch_size=$((num_procs / n_trajs_per_prompt))
 # Other settings
+max_prompt_length=$((1024 * 2))
 temperature=1.0
 offload=False
 
