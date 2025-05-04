@@ -519,29 +519,6 @@ class RayDAPOTrainer(RayPPOTrainer):
                             if self.updating_state.batch is not None
                             else new_batch
                         )
-                        if self.config.data.dynamic_max_resp_len.enable:
-                            response_mask = compute_response_mask(self.updating_state.batch)
-                            resp_lens = response_mask.sum(dim=-1)
-                            gen_max_resp_len = resp_lens.max().item()
-                            max_non_truncated_resp_len = resp_lens[resp_lens < gen_max_resp_len].max().item()
-                            logger.info(
-                                "[step:%d/gen_round_cnt:%d] Max non-truncated response length: %d"
-                                " / Max response length: %d",
-                                self.global_steps,
-                                self.updating_state.gen_round_cnt,
-                                max_non_truncated_resp_len,
-                                gen_max_resp_len,
-                            )
-                            max_model_len = self.config.actor_rollout_ref.rollout.max_model_len
-                            max_prompt_len = self.config.actor_rollout_ref.rollout.prompt_length
-                            max_tokens = min(
-                                int(
-                                    max_non_truncated_resp_len
-                                    * (1 + self.config.data.dynamic_max_resp_len.extending_tolerance)
-                                ),
-                                max_model_len - max_prompt_len,
-                            )
-                            self.generation_state.sampling_params["max_tokens"] = max_tokens
 
                         # Ceiling
                         self.updating_state.gen_traj_cnt += len(gen_batch_output)
@@ -563,6 +540,31 @@ class RayDAPOTrainer(RayPPOTrainer):
                             self.updating_state.batch = self.updating_state.batch[:traj_bsz]
 
                     assert self.updating_state.batch is not None
+                    # NOTE: Update max_tokens per iteration to avoid tensor shape inconsistency
+                    if self.config.data.dynamic_max_resp_len.enable:
+                        response_mask = compute_response_mask(self.updating_state.batch)
+                        resp_lens = response_mask.sum(dim=-1)
+                        gen_max_resp_len = resp_lens.max().item()
+                        max_non_truncated_resp_len = resp_lens[resp_lens < gen_max_resp_len].max().item()
+                        logger.info(
+                            "[step:%d/gen_round_cnt:%d] Max non-truncated response length: %d"
+                            " / Max response length: %d",
+                            self.global_steps,
+                            self.updating_state.gen_round_cnt,
+                            max_non_truncated_resp_len,
+                            gen_max_resp_len,
+                        )
+                        max_model_len = self.config.actor_rollout_ref.rollout.max_model_len
+                        max_prompt_len = self.config.actor_rollout_ref.rollout.prompt_length
+                        max_tokens = min(
+                            int(
+                                max_non_truncated_resp_len
+                                * (1 + self.config.data.dynamic_max_resp_len.extending_tolerance)
+                            ),
+                            max_model_len - max_prompt_len,
+                        )
+                        self.generation_state.sampling_params["max_tokens"] = max_tokens
+
                     # balance the number of valid tokens on each dp rank.
                     # Note that this breaks the order of data inside the batch.
                     # Please take care when you implement group based adv computation such as GRPO and rloo
