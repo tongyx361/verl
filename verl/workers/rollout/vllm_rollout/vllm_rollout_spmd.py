@@ -276,6 +276,7 @@ class vLLMRollout(BaseRollout):
                 for sample_id in range(len(output.outputs)):
                     response.append(output.outputs[sample_id].token_ids)
 
+            logger.debug(msg="pad_2d_list_to_length", extra={"max_tokens": self.sampling_params.max_tokens})
             response = pad_2d_list_to_length(
                 response, self.pad_token_id, max_length=self.sampling_params.max_tokens
             ).to(idx.device)
