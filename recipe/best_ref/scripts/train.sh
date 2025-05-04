@@ -108,7 +108,7 @@ fi
 # Test
 TEST=${TEST:-"0"}
 if [ "${TEST}" != "1" ]; then
-    max_response_length=$((1024 * 128)) # Qwen2.5
+    max_response_length=$((1024 * 126)) # Qwen2.5
     val_before_train=True
     resume_mode=auto
     save_freq=5
