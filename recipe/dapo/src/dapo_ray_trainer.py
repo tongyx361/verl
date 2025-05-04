@@ -541,6 +541,12 @@ class RayDAPOTrainer(RayPPOTrainer):
                         actor_output_metrics = reduce_metrics(actor_output.meta_info["metrics"])
                         self.updating_state.metrics.update(actor_output_metrics)
 
+                if self.config.trainer.save_freq > 0 and (
+                    is_last_step or self.global_steps % self.config.trainer.save_freq == 0
+                ):
+                    with _timer("save_checkpoint", self.updating_state.timing_raw):
+                        self._save_checkpoint()
+
                 # validate
                 if (
                     self.val_reward_fn is not None
@@ -552,12 +558,6 @@ class RayDAPOTrainer(RayPPOTrainer):
                         if is_last_step:
                             last_val_metrics = val_metrics
                     self.updating_state.metrics.update(val_metrics)
-
-                if self.config.trainer.save_freq > 0 and (
-                    is_last_step or self.global_steps % self.config.trainer.save_freq == 0
-                ):
-                    with _timer("save_checkpoint", self.updating_state.timing_raw):
-                        self._save_checkpoint()
 
                 # collect metrics
                 assert self.updating_state.batch is not None
