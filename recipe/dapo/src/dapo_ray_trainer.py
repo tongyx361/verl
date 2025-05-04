@@ -547,18 +547,6 @@ class RayDAPOTrainer(RayPPOTrainer):
                     with _timer("save_checkpoint", self.updating_state.timing_raw):
                         self._save_checkpoint()
 
-                # validate
-                if (
-                    self.val_reward_fn is not None
-                    and self.config.trainer.test_freq > 0
-                    and (is_last_step or self.global_steps % self.config.trainer.test_freq == 0)
-                ):
-                    with _timer("testing", self.updating_state.timing_raw):
-                        val_metrics = self._validate()
-                        if is_last_step:
-                            last_val_metrics = val_metrics
-                    self.updating_state.metrics.update(val_metrics)
-
                 # collect metrics
                 assert self.updating_state.batch is not None
                 self.updating_state.metrics.update(
@@ -586,6 +574,18 @@ class RayDAPOTrainer(RayPPOTrainer):
 
                 # TODO: make a canonical logger that supports various backend
                 tracker.log(data=self.updating_state.metrics, step=self.global_steps)
+
+                # validate
+                if (
+                    self.val_reward_fn is not None
+                    and self.config.trainer.test_freq > 0
+                    and (is_last_step or self.global_steps % self.config.trainer.test_freq == 0)
+                ):
+                    with _timer("testing", self.updating_state.timing_raw):
+                        val_metrics = self._validate()
+                        if is_last_step:
+                            last_val_metrics = val_metrics
+                    tracker.log(data=val_metrics, step=self.global_steps)
 
                 if is_last_step:
                     pprint(f"Final validation metrics: {last_val_metrics}")
