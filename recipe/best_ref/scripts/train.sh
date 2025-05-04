@@ -128,7 +128,7 @@ VAL_BEFORE_TRAIN=${VAL_BEFORE_TRAIN:-"${val_before_train}"}
 ACTOR_LR=${ACTOR_LR:-${actor_lr}}
 TRAIN_BS=${TRAIN_BS:-"${train_bs}"}
 N_UPDATES_PER_BATCH=${N_UPDATES_PER_BATCH:-${n_updates_per_batch}}
-INIT_MAX_RESP_LEN=${INIT_MAX_RESP_LEN:-${INIT_MAX_RESP_LEN}}
+INIT_MAX_RESP_LEN=${INIT_MAX_RESP_LEN:-${max_response_length}}
 # Ray
 RAY_JOB_SUBMIT=${RAY_JOB_SUBMIT:-"1"}
 RAY_ADDRESS=${RAY_ADDRESS:-"http://localhost:8265"}
