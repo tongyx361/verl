@@ -15,6 +15,7 @@ data:
   dynamic_max_resp_len:
     enable: True
     extending_tolerance: 0.2
+    max_total_len: 131072 # Qwen2.5
 
 reward_model:
   reward_manager: dapo
