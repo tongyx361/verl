@@ -131,6 +131,7 @@ ACTOR_LR=${ACTOR_LR:-${actor_lr}}
 TRAIN_BS=${TRAIN_BS:-"${train_bs}"}
 N_UPDATES_PER_BATCH=${N_UPDATES_PER_BATCH:-${n_updates_per_batch}}
 INIT_MAX_RESP_LEN=${INIT_MAX_RESP_LEN:-${max_response_length}}
+GPU_MEM_UTIL=${GPU_MEM_UTIL:-${gpu_mem_util}}
 # Ray
 RAY_JOB_SUBMIT=${RAY_JOB_SUBMIT:-"1"}
 RAY_ADDRESS=${RAY_ADDRESS:-"http://localhost:8265"}
@@ -209,7 +210,7 @@ python3 -m recipe.dapo.src.main_dapo \
     actor_rollout_ref.actor.use_dynamic_bsz=${use_dynamic_bsz} \
     actor_rollout_ref.actor.ulysses_sequence_parallel_size=${sp_size} \
     actor_rollout_ref.actor.ppo_max_token_len_per_gpu=${actor_train_max_token_num} \
-    actor_rollout_ref.rollout.gpu_memory_utilization=${gpu_mem_util} \
+    actor_rollout_ref.rollout.gpu_memory_utilization=${GPU_MEM_UTIL} \
     actor_rollout_ref.rollout.tensor_model_parallel_size=${gen_tp} \
     actor_rollout_ref.ref.fsdp_config.param_offload=${offload} \
     actor_rollout_ref.ref.log_prob_use_dynamic_bsz=${use_dynamic_bsz} \
