@@ -107,11 +107,26 @@ else
     exit 1
 fi
 
+ext_tol=0.2
+overlong_buf_len=$((1024 * 4))
+overlong_buf_penalty_factor=1.0
+if [[ "${RECIPE}" =~ "dmrl" ]]; then
+    enable_dmrl=True
+    enable_overlong_buf=False
+else
+    enable_dmrl=False
+    if [[ "${RECIPE}" =~ "simplerl" ]]; then
+        enable_overlong_buf=True
+    else # DAPO etc.
+        enable_overlong_buf=True
+    fi
+fi
+
 # Test
 TEST=${TEST:-"0"}
 if [ "${TEST}" != "1" ]; then
-    max_response_length=$((1024 * 20))
     val_before_train=True
+    max_response_length=$((1024 * 20))
     resume_mode=auto
     save_freq=5
 else
@@ -157,7 +172,7 @@ use_dynamic_bsz=True
 
 test_freq=${save_freq}
 
-ckpt_name="${RECIPE}-dmrl-${MODEL_ID}-lr${ACTOR_LR}-bs${TRAIN_BS}-nup${N_UPDATES_PER_BATCH}-${num_procs}gpus"
+ckpt_name="${RECIPE}-${MODEL_ID}-lr${ACTOR_LR}-bs${TRAIN_BS}-nup${N_UPDATES_PER_BATCH}-${num_procs}gpus"
 [ "${TEST}" == "1" ] && ckpt_name="${ckpt_name}-test"
 
 exp_name="${ckpt_name}-${DEVICE}-$(git rev-parse --short HEAD)-$(date +%Y%m%d-%H%M%S)"
@@ -182,8 +197,13 @@ python3 -m recipe.dapo.src.main_dapo \
     data.repeat.factor=${repeat_factor} \
     data.return_raw_chat=True \
     data.val_repeat_factor=${val_n} \
+    data.dynamic_max_resp_len.enable=${enable_dmrl} \
+    data.dynamic_max_resp_len.extending_tolerance=${ext_tol}
     reward_model.reward_manager=dapo \
-    reward_model.overlong_buffer.enable=False \
+    reward_model.overlong_buffer.enable=${enable_overlong_buf} \
+    reward_model.overlong_buffer.len=${overlong_buf_len} \
+    reward_model.overlong_buffer.penalty_factor=${overlong_buf_penalty_factor} \
+    reward_model.overlong_buffer.log=True \
     algorithm.adv_estimator=${adv_estimator} \
     algorithm.use_kl_in_reward=${use_kl_in_reward} \
     algorithm.kl_ctrl.kl_coef=${kl_coef} \
