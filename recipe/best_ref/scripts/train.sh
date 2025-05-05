@@ -180,6 +180,7 @@ python3 -m recipe.dapo.src.main_dapo \
     data.shuffle_in_batch=${shuffle_in_batch} \
     data.repeat.factor=${repeat_factor} \
     data.return_raw_chat=True \
+    data.val_repeat_factor=${val_n} \
     reward_model.reward_manager=dapo \
     reward_model.overlong_buffer.enable=False \
     algorithm.adv_estimator=${adv_estimator} \
@@ -220,7 +221,7 @@ python3 -m recipe.dapo.src.main_dapo \
     actor_rollout_ref.rollout.top_p=1.0 \
     actor_rollout_ref.rollout.val_kwargs.temperature=${temperature} \
     actor_rollout_ref.rollout.val_kwargs.top_p=0.7 \
-    actor_rollout_ref.rollout.val_kwargs.n=${val_n} \
+    actor_rollout_ref.rollout.val_kwargs.n=1 \
     actor_rollout_ref.rollout.val_kwargs.do_sample=True \
     actor_rollout_ref.rollout.enable_chunked_prefill=True \
     actor_rollout_ref.rollout.enforce_eager=False \
