@@ -198,7 +198,7 @@ python3 -m recipe.dapo.src.main_dapo \
     data.return_raw_chat=True \
     data.val_repeat_factor=${val_n} \
     data.dynamic_max_resp_len.enable=${enable_dmrl} \
-    data.dynamic_max_resp_len.extending_tolerance=${ext_tol}
+    data.dynamic_max_resp_len.extending_tolerance=${ext_tol} \
     reward_model.reward_manager=dapo \
     reward_model.overlong_buffer.enable=${enable_overlong_buf} \
     reward_model.overlong_buffer.len=${overlong_buf_len} \
