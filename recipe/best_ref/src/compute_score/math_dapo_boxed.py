@@ -6,6 +6,8 @@ from verl.utils.reward_score.math_dapo import is_correct_minerva
 def compute_score_math_dapo_boxed(
     solution_str: str,
     ground_truth: str,
+    data_source: str,
+    extra_info: dict[str, Any],
 ) -> dict[str, Any]:
     """Compute the reward score for a solution.
 

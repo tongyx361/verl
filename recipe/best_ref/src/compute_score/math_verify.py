@@ -1,7 +1,9 @@
+from typing import Any
+
 from verl.utils.reward_score import math_verify
 
 
-def compute_score_math_verify(solution_str, ground_truth, data_source):
+def compute_score_math_verify(solution_str: str, ground_truth: str, data_source: str, extra_info: dict[str, Any]):
     non_correct_score = 0.0 if data_source.startswith("simplelr_") else -1.0
 
     verify_result = math_verify.compute_score(solution_str, ground_truth, return_dict=True)
