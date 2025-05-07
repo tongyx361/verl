@@ -20,7 +20,11 @@ def compute_score_math_dapo_boxed(
     solution_str = solution_str[-300:]  # The longest answer in MATH-500 has 159 characters
 
     # Verify the solution
-    correct, pred = is_correct_minerva(solution_str, ground_truth, answer_pattern=r"(?i)\\boxed\{\s*([^\n]+)\}")
+    correct, pred = is_correct_minerva(
+        solution_str,
+        ground_truth,
+        answer_pattern=r"(?i)\\boxed\{\s*([^\n]+)\s*\}",
+    )
 
     reward = 1.0 if correct else -1.0
     acc = correct
