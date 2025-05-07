@@ -37,6 +37,8 @@ fi
 RECIPE=${RECIPE:-"darloo"}
 repeat_factor=1
 shuffle_in_batch=True
+custom_reward_fn_src_path="recipe/best_ref/src/compute_score/math_verify.py"
+custom_reward_fn_name="compute_score_math_verify"
 if [[ "${RECIPE}" =~ "da" ]]; then
     train_file="${RAY_DATA_HOME}/data/dapo-math-unique-clean-17k.parquet"
     train_url="https://huggingface.co/datasets/tongyx361/DAPO-Math-Unique-Clean-17k/resolve/main/data/dapo-math-unique-clean-17k.parquet?download=true"
@@ -67,9 +69,15 @@ if [[ "${RECIPE}" =~ "da" ]]; then
         adv_estimator=grpo
         actor_lr=1e-6
     fi
+
     if [[ "${RECIPE}" =~ "orig-data" ]]; then
         repeat_factor=100
         shuffle_in_batch=False
+    fi
+
+    if [[ "${RECIPE}" =~ "orig-rew" ]]; then
+        custom_reward_fn_src_path="recipe/best_ref/src/compute_score/math_dapo_boxed.py"
+        custom_reward_fn_name="compute_score_math_dapo_boxed"
     fi
 elif [ "${RECIPE}" == "simplerl-zoo" ]; then
     # c.f. https://github.com/hkust-nlp/simpleRL-reason?tab=readme-ov-file#training
@@ -204,6 +212,8 @@ python3 -m recipe.dapo.src.main_dapo \
     reward_model.overlong_buffer.len=${overlong_buf_len} \
     reward_model.overlong_buffer.penalty_factor=${overlong_buf_penalty_factor} \
     reward_model.overlong_buffer.log=True \
+    custom_reward_function.path=${custom_reward_fn_src_path} \
+    custom_reward_function.name=${custom_reward_fn_name} \
     algorithm.adv_estimator=${adv_estimator} \
     algorithm.use_kl_in_reward=${use_kl_in_reward} \
     algorithm.kl_ctrl.kl_coef=${kl_coef} \

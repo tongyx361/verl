@@ -15,17 +15,7 @@
 
 
 def _default_compute_score(data_source, solution_str, ground_truth, extra_info=None):
-    if data_source.startswith("MATH##") or data_source.startswith("aime") or data_source.startswith("simplelr_"):
-        from . import math_verify
-
-        non_correct_score = 0.0 if data_source.startswith("simplelr_") else -1.0
-
-        verify_result = math_verify.compute_score(solution_str, ground_truth, return_dict=True)
-        res = {
-            "score": 1.0 if verify_result["acc"] else non_correct_score,
-            **verify_result,
-        }
-    elif data_source == "openai/gsm8k":
+    if data_source == "openai/gsm8k":
         from . import gsm8k
 
         res = gsm8k.compute_score(solution_str, ground_truth)
