@@ -155,6 +155,8 @@ TRAIN_BS=${TRAIN_BS:-"${train_bs}"}
 N_UPDATES_PER_BATCH=${N_UPDATES_PER_BATCH:-${n_updates_per_batch}}
 INIT_MAX_RESP_LEN=${INIT_MAX_RESP_LEN:-${max_response_length}}
 GPU_MEM_UTIL=${GPU_MEM_UTIL:-${gpu_mem_util}}
+ACTOR_TRAIN_MAX_TOKEN_NUM=${ACTOR_TRAIN_MAX_TOKEN_NUM:-${actor_train_max_token_num}}
+INFER_MAX_TOKEN_NUM=${INFER_MAX_TOKEN_NUM:-${infer_max_token_num}}
 # Ray
 RAY_JOB_SUBMIT=${RAY_JOB_SUBMIT:-"1"}
 RAY_ADDRESS=${RAY_ADDRESS:-"http://localhost:8265"}
@@ -239,12 +241,12 @@ python3 -m recipe.dapo.src.main_dapo \
     actor_rollout_ref.actor.kl_loss_type=${kl_loss_type} \
     actor_rollout_ref.actor.use_dynamic_bsz=${use_dynamic_bsz} \
     actor_rollout_ref.actor.ulysses_sequence_parallel_size=${sp_size} \
-    actor_rollout_ref.actor.ppo_max_token_len_per_gpu=${actor_train_max_token_num} \
+    actor_rollout_ref.actor.ppo_max_token_len_per_gpu=${ACTOR_TRAIN_MAX_TOKEN_NUM} \
     actor_rollout_ref.rollout.gpu_memory_utilization=${GPU_MEM_UTIL} \
     actor_rollout_ref.rollout.tensor_model_parallel_size=${gen_tp} \
     actor_rollout_ref.ref.fsdp_config.param_offload=${offload} \
     actor_rollout_ref.ref.log_prob_use_dynamic_bsz=${use_dynamic_bsz} \
-    actor_rollout_ref.ref.log_prob_max_token_len_per_gpu=${infer_max_token_num} \
+    actor_rollout_ref.ref.log_prob_max_token_len_per_gpu=${INFER_MAX_TOKEN_NUM} \
     actor_rollout_ref.ref.ulysses_sequence_parallel_size=${sp_size} \
     actor_rollout_ref.rollout.max_model_len=${max_model_len} \
     actor_rollout_ref.rollout.temperature=${temperature} \
@@ -258,7 +260,7 @@ python3 -m recipe.dapo.src.main_dapo \
     actor_rollout_ref.rollout.enforce_eager=False \
     actor_rollout_ref.rollout.free_cache_engine=False \
     actor_rollout_ref.rollout.log_prob_use_dynamic_bsz=${use_dynamic_bsz} \
-    actor_rollout_ref.rollout.log_prob_max_token_len_per_gpu=${infer_max_token_num} \
+    actor_rollout_ref.rollout.log_prob_max_token_len_per_gpu=${INFER_MAX_TOKEN_NUM} \
     trainer.logger=['console','wandb'] \
     trainer.project_name=${project_name} \
     trainer.experiment_name="${exp_name}" \
