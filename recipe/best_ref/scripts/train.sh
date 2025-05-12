@@ -74,12 +74,13 @@ if [[ "${RECIPE}" =~ "da" ]]; then
         repeat_factor=100
         shuffle_in_batch=False
     elif [[ "${RECIPE}" =~ "repro" ]]; then
+        last_user_msg_template="as_is_template"
         train_file="${RAY_DATA_HOME}/data/dapo-math-17k.parquet"
         train_url="https://huggingface.co/datasets/BytedTsinghua-SIA/DAPO-Math-17k/resolve/main/data/dapo-math-17k.parquet?download=true"
         val_file="${RAY_DATA_HOME}/data/aime-2024-dapo.parquet"
         val_url="https://huggingface.co/datasets/BytedTsinghua-SIA/AIME-2024/resolve/main/data/aime-2024.parquet?download=true"
-        shuffle_in_batch=False
         val_n=1
+        shuffle_in_batch=False
     fi
 
     if [[ "${RECIPE}" =~ "orig-rew" ]]; then
