@@ -1,6 +1,6 @@
 from typing import Any
 
-from verl.utils.reward_score.math_dapo import is_correct_minerva
+from verl.utils.reward_score.math_dapo import compute_score, is_correct_minerva
 
 
 def compute_score_math_dapo_boxed(
@@ -36,3 +36,6 @@ def compute_score_math_dapo_boxed(
         "acc": acc,
         "pred": pred,
     }
+
+
+__all__ = ["compute_score_math_dapo_boxed", "compute_score"]
