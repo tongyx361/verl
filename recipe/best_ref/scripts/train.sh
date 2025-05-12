@@ -73,11 +73,21 @@ if [[ "${RECIPE}" =~ "da" ]]; then
     if [[ "${RECIPE}" =~ "orig-data" ]]; then
         repeat_factor=100
         shuffle_in_batch=False
+    elif [[ "${RECIPE}" =~ "repro" ]]; then
+        train_file="${RAY_DATA_HOME}/data/dapo-math-17k.parquet"
+        train_url="https://huggingface.co/datasets/BytedTsinghua-SIA/DAPO-Math-17k/resolve/main/data/dapo-math-17k.parquet?download=true"
+        val_file="${RAY_DATA_HOME}/data/aime-2024-dapo.parquet"
+        val_url="https://huggingface.co/datasets/BytedTsinghua-SIA/AIME-2024/resolve/main/data/aime-2024.parquet?download=true"
+        shuffle_in_batch=False
+        val_n=1
     fi
 
     if [[ "${RECIPE}" =~ "orig-rew" ]]; then
-        custom_reward_fn_src_path="recipe/best_ref/src/compute_score/math_dapo_boxed.py"
+        custom_reward_fn_src_path="recipe/best_ref/src/compute_score/math_dapo.py"
         custom_reward_fn_name="compute_score_math_dapo_boxed"
+    elif [[ "${RECIPE}" =~ "repro" ]]; then
+        custom_reward_fn_src_path="recipe/best_ref/src/compute_score/math_dapo.py"
+        custom_reward_fn_name="compute_score"
     fi
 elif [ "${RECIPE}" == "simplerl-zoo" ]; then
     # c.f. https://github.com/hkust-nlp/simpleRL-reason?tab=readme-ov-file#training
