@@ -37,7 +37,7 @@ fi
 RECIPE=${RECIPE:-"darloo"}
 repeat_factor=1
 shuffle_in_batch=True
-custom_reward_fn_src_path="recipe/best_ref/src/compute_score/math_verify.py"
+custom_reward_fn_src_path="recipe/dev/src/compute_score/math_verify.py"
 custom_reward_fn_name="compute_score_math_verify"
 max_prompt_length=$((1024 * 2))
 max_response_length=$((1024 * 20))
@@ -88,10 +88,10 @@ if [[ "${RECIPE}" =~ "da" ]]; then
     fi
 
     if [[ "${RECIPE}" =~ "orig-rew" ]]; then
-        custom_reward_fn_src_path="recipe/best_ref/src/compute_score/math_dapo.py"
+        custom_reward_fn_src_path="recipe/dev/src/compute_score/math_dapo.py"
         custom_reward_fn_name="compute_score_math_dapo_boxed"
     elif [[ "${RECIPE}" =~ "repro" ]]; then
-        custom_reward_fn_src_path="recipe/best_ref/src/compute_score/math_dapo.py"
+        custom_reward_fn_src_path="recipe/dev/src/compute_score/math_dapo.py"
         custom_reward_fn_name="compute_score_math_dapo"
     fi
 
