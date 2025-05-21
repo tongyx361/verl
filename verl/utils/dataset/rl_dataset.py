@@ -119,7 +119,7 @@ class RLHFDataset(Dataset):
         self.filter_prompts = config.get("filter_prompts", True)
         self.serialize_dataset = False
         self._download()
-        self._read_files_and_tokenize(repeat_factor=config.repeat_factor, shuffle_seed=config.shuffle_seed)
+        self._read_files_and_tokenize(repeat_factor=config.repeat.factor, shuffle_seed=config.shuffle_seed)
 
     def _download(self, use_origin_parquet=False):
         from verl.utils.fs import copy_to_local
