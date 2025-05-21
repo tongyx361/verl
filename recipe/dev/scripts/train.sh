@@ -221,7 +221,7 @@ log_path="${log_home}/${exp_name}.log"
 read -r -d '' py_cmd <<EOF
 [ ! -f "${train_file}" ] && mkdir -p $(dirname "${train_file}") && wget -O "${train_file}" "${train_url}";
 [ ! -f "${val_file}" ] && mkdir -p $(dirname "${val_file}") && wget -O "${val_file}" "${val_url}";
-python3 -m recipe.dapo.src.main_dapo \
+python3 -m recipe.dapo.main_dapo \
     data.train_files="${train_file}" \
     data.val_files="${val_file}" \
     data.prompt_key=prompt \
