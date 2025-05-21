@@ -481,6 +481,8 @@ class RayDAPOTrainer(RayPPOTrainer):
                         )
                         self.generation_state.sampling_params["max_tokens"] = max_tokens
 
+                    if self.config.trainer.shuffle_in_batch:
+                        self.updating_state.batch.reorder(torch.randperm(len(self.updating_state.batch)))
                     # balance the number of valid tokens on each dp rank.
                     # Note that this breaks the order of data inside the batch.
                     # Please take care when you implement group based adv computation such as GRPO and rloo

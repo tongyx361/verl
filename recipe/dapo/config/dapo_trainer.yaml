@@ -46,6 +46,7 @@ algorithm:
       oversampling_factor: 1.2
 
 trainer:
+  shuffle_in_batch: False
   project_name: verl_dapo
 
 seed: 42

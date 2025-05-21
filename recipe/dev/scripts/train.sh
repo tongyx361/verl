@@ -230,7 +230,6 @@ python3 -m recipe.dapo.main_dapo \
     data.max_prompt_length=${max_prompt_length} \
     data.max_response_length=${max_response_length} \
     data.train_batch_size="${TRAIN_BS}" \
-    data.shuffle_in_batch=${shuffle_in_batch} \
     data.repeat.factor=${repeat_factor} \
     data.return_raw_chat=True \
     val_data.repeat.factor=${val_n} \
@@ -292,6 +291,7 @@ python3 -m recipe.dapo.main_dapo \
     actor_rollout_ref.rollout.free_cache_engine=False \
     actor_rollout_ref.rollout.log_prob_use_dynamic_bsz=${use_dynamic_bsz} \
     actor_rollout_ref.rollout.log_prob_max_token_len_per_gpu=${INFER_MAX_TOKEN_NUM} \
+    trainer.shuffle_in_batch=${shuffle_in_batch} \
     trainer.logger=['console','wandb'] \
     trainer.project_name=${project_name} \
     trainer.experiment_name="${exp_name}" \
