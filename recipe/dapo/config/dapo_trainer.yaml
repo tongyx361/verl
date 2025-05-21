@@ -1,27 +1,51 @@
 hydra:
   searchpath:
     - file://verl/trainer/config
+    - file://configs/rl_trainer
 
 defaults:
   - ppo_trainer
   - _self_
 
 data:
-  gen_batch_size: ${data.train_batch_size}
+  repeat:
+    factor: null # Set to `null` to disable repeating
+    shuffle_seed: ${seed} # Set to a negative number to disable shuffling
+  dynamic_max_resp_len:
+    enable: False
+    extending_tolerance: 0.2
+
+val_data:
+  repeat:
+    factor: ${data.repeat.factor}
+    shuffle_seed: ${seed}
+  dynamic_max_resp_len:
+    enable: ${data.dynamic_max_resp_len.enable}
+    extending_tolerance: ${data.dynamic_max_resp_len.extending_tolerance}
 
 reward_model:
   reward_manager: dapo
-  overlong_buffer: 
-    enable: False # We try to avoid forgetting to set enable
-    len: 0
-    penalty_factor: 0.0
-    log: False
+  overlong_buffer:
+    enable: False
+    len: 4096
+    penalty_factor: 1.0
+    log: True
+
+actor_rollout_ref:
+  rollout:
+    balance_gen: False
 
 algorithm:
   filter_groups:
-    enable: False # We try to avoid forgetting to set enable
-    metric: null # acc / score / seq_reward / seq_final_reward / ...
-    max_num_gen_batches: 0 # Non-positive values mean no upper limit
+    enable: True
+    metric: acc # acc / score / seq_reward / seq_final_reward / ...
+    max_num_gen_batches: 10 # Non-positive values mean no upper limit
+    oversampling_iters: 3
+    dynamic_gen_bs:
+      enable: False
+      oversampling_factor: 1.2
 
 trainer:
-  project_name: verl-dapo
+  project_name: verl_dapo
+
+seed: 42

@@ -1,0 +1,1 @@
+last_user_msg_template: "{{ content | trim | regex_replace('^Question:\\s*', '') | regex_replace('\\s*Answer:[\\s\\S]*$', '') }}\n\nLet's think step by step and provide the final answer in \"\\boxed{...}\"."

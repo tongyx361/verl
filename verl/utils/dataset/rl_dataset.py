@@ -19,9 +19,10 @@ import logging
 import os
 import re
 from collections import defaultdict
-from typing import List, Optional, Union
+from typing import Any, Dict, List, Optional, Union
 
 import datasets
+import jinja2
 import numpy as np
 import torch
 from omegaconf import DictConfig, ListConfig
@@ -32,6 +33,32 @@ import verl.utils.torch_functional as verl_F
 from verl.utils.model import compute_position_id_with_mask
 
 logger = logging.getLogger(__name__)
+
+
+def apply_template(template_str: str, render_kwargs: Dict[str, Any]) -> str:
+    """Apply a Jinja2 template with custom filters.
+
+    Args:
+        template_str: Jinja2 template string
+        content: Dictionary containing variables to use in the template
+
+    Returns:
+        Rendered template string
+    """
+    # Create a Jinja2 environment
+    env = jinja2.Environment()
+
+    # Add custom filters to mimic the template's behavior
+    def regex_replace(value, pattern, replacement):
+        return re.sub(pattern, replacement, value, flags=re.DOTALL)
+
+    env.filters["regex_replace"] = regex_replace
+
+    # Compile the template
+    template = env.from_string(template_str)
+
+    # Render with the content
+    return template.render(**render_kwargs)
 
 
 def collate_fn(data_list: list[dict]) -> dict:
@@ -82,7 +109,6 @@ class RLHFDataset(Dataset):
         self.video_key = config.get("video_key", "videos")
         self.max_prompt_length = config.get("max_prompt_length", 1024)
         self.return_raw_chat = config.get("return_raw_chat", False)
-        self.return_full_prompt = config.get("return_full_prompt", False)
         self.truncation = config.get("truncation", "error")
         self.filter_overlong_prompts = config.get("filter_overlong_prompts", True)
 
@@ -93,7 +119,7 @@ class RLHFDataset(Dataset):
         self.filter_prompts = config.get("filter_prompts", True)
         self.serialize_dataset = False
         self._download()
-        self._read_files_and_tokenize()
+        self._read_files_and_tokenize(repeat_factor=config.repeat_factor, shuffle_seed=config.shuffle_seed)
 
     def _download(self, use_origin_parquet=False):
         from verl.utils.fs import copy_to_local
@@ -102,7 +128,7 @@ class RLHFDataset(Dataset):
         for i, parquet_file in enumerate(data_files):
             self.data_files[i] = copy_to_local(src=parquet_file, cache_dir=self.cache_dir)
 
-    def _read_files_and_tokenize(self):
+    def _read_files_and_tokenize(self, repeat_factor: Optional[int] = None, shuffle_seed: int = -1) -> None:
         dataframes = []
         for parquet_file in self.data_files:
             # read parquet files and cache
@@ -123,6 +149,11 @@ class RLHFDataset(Dataset):
             )
 
             print(f"filter dataset len: {len(self.dataframe)}")
+
+        if repeat_factor and repeat_factor != 1:
+            self.dataframe = self.dataframe.repeat(repeat_factor)
+            if shuffle_seed >= 0:
+                self.dataframe = self.dataframe.shuffle(seed=shuffle_seed)
 
     def resume_dataset_state(self):
         self.serialize_dataset = not hasattr(self, "original_data_files")
@@ -162,6 +193,19 @@ class RLHFDataset(Dataset):
         row_dict: dict = self.dataframe[item]
         messages = self._build_messages(row_dict)
         model_inputs = {}
+
+        # Find the last user message
+        last_user_msg = None
+        for msg in reversed(messages):
+            if msg["role"] == "user":
+                last_user_msg = msg
+                break
+        assert last_user_msg is not None, f"No user message found in {messages=}"
+        last_user_msg_template = self.config.get("last_user_msg_template", None)
+        # Apply the template to the content
+        if last_user_msg_template:
+            # Use apply_template instead of direct Template rendering
+            last_user_msg["content"] = apply_template(last_user_msg_template, last_user_msg)
 
         if self.processor is not None:
             from verl.utils.dataset.vision_utils import process_image, process_video
@@ -236,10 +280,6 @@ class RLHFDataset(Dataset):
                 raw_prompt_ids = raw_prompt_ids[-self.max_prompt_length :]
             elif self.truncation == "right":
                 raw_prompt_ids = raw_prompt_ids[: self.max_prompt_length]
-            elif self.truncation == "middle":
-                left_half = self.max_prompt_length // 2
-                right_half = self.max_prompt_length - left_half
-                raw_prompt_ids = raw_prompt_ids[:left_half] + raw_prompt_ids[-right_half:]
             elif self.truncation == "error":
                 raise RuntimeError(f"Prompt length {len(raw_prompt_ids)} is longer than {self.max_prompt_length}.")
 
@@ -247,10 +287,6 @@ class RLHFDataset(Dataset):
         # encode prompts without chat template
         if self.return_raw_chat:
             row_dict["raw_prompt"] = messages
-        
-        # get prompts with chat template
-        if self.return_full_prompt:
-            row_dict["full_prompts"] = raw_prompt # array of strings
 
         # add index for each prompt
         index = row_dict.get("extra_info", {}).get("index", 0)
