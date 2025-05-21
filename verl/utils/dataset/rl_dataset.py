@@ -119,7 +119,7 @@ class RLHFDataset(Dataset):
         self.filter_prompts = config.get("filter_prompts", True)
         self.serialize_dataset = False
         self._download()
-        self._read_files_and_tokenize(repeat_factor=config.repeat.factor, shuffle_seed=config.shuffle_seed)
+        self._read_files_and_tokenize(repeat_factor=config.repeat.factor, repeat_shuffle_seed=config.repeat.shuffle_seed)
 
     def _download(self, use_origin_parquet=False):
         from verl.utils.fs import copy_to_local
@@ -128,7 +128,7 @@ class RLHFDataset(Dataset):
         for i, parquet_file in enumerate(data_files):
             self.data_files[i] = copy_to_local(src=parquet_file, cache_dir=self.cache_dir)
 
-    def _read_files_and_tokenize(self, repeat_factor: Optional[int] = None, shuffle_seed: int = -1) -> None:
+    def _read_files_and_tokenize(self, repeat_factor: Optional[int] = None, repeat_shuffle_seed: int = -1) -> None:
         dataframes = []
         for parquet_file in self.data_files:
             # read parquet files and cache
@@ -152,8 +152,8 @@ class RLHFDataset(Dataset):
 
         if repeat_factor and repeat_factor != 1:
             self.dataframe = self.dataframe.repeat(repeat_factor)
-            if shuffle_seed >= 0:
-                self.dataframe = self.dataframe.shuffle(seed=shuffle_seed)
+            if repeat_shuffle_seed >= 0:
+                self.dataframe = self.dataframe.shuffle(seed=repeat_shuffle_seed)
 
     def resume_dataset_state(self):
         self.serialize_dataset = not hasattr(self, "original_data_files")
