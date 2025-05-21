@@ -194,7 +194,7 @@ class RayDAPOTrainer(RayPPOTrainer):
             # repeat test batch
             test_batch = test_batch.repeat(
                 repeat_times=self.config.actor_rollout_ref.rollout.val_kwargs.n,
-                interleave=not self.config.actor_rollout_ref.rollout.balance_gen,
+                interleave=not balance_gen,
             )
 
             # we only do validation on rule-based rm
@@ -324,6 +324,8 @@ class RayDAPOTrainer(RayPPOTrainer):
 
         for epoch in range(self.config.trainer.total_epochs):
             for batch_dict in self.train_dataloader:
+                # === Collecting Prompts ===
+
                 data_state = self.train_dataloader.state_dict()
                 logger.debug("%s", f"{data_state=}")
 
@@ -351,38 +353,39 @@ class RayDAPOTrainer(RayPPOTrainer):
                     logger.info("Keep loading until we get %d prompts...", target_num_prompt_needed)
                     continue
 
+                # === Generation ===
+
                 self.updating_state.gen_prompt_cnt += len(self.generation_state.prompt_batch)
                 self.updating_state.gen_round_cnt += 1
-
-                # pop those keys for generation
-                batch_keys = ["input_ids", "attention_mask", "position_ids"]
-                non_tensor_batch_keys = ["raw_prompt_ids"]
-                if "multi_modal_inputs" in self.generation_state.prompt_batch.non_tensor_batch.keys():
-                    batch_keys.extend(["multi_modal_data", "multi_modal_inputs"])
-
-                repeat_interleave = not self.config.actor_rollout_ref.rollout.balance_gen
-                if self.config.actor_rollout_ref.rollout.balance_gen:
-                    self.generation_state.sampling_params["n"] = 1
-                    self.generation_state.prompt_batch = self.generation_state.prompt_batch.repeat(repeat_times=self.config.actor_rollout_ref.rollout.n, interleave=repeat_interleave)
-
-                gen_batch = self.generation_state.prompt_batch.pop(batch_keys=batch_keys, non_tensor_batch_keys=non_tensor_batch_keys)
+                prompt_batch = self.generation_state.prompt_batch
+                prompt_batch.non_tensor_batch["uid"] = np.array([str(uuid.uuid4()) for _ in range(len(prompt_batch.batch))], dtype=object)
+                balance_gen = self.config.actor_rollout_ref.rollout.balance_gen
+                if balance_gen:
+                    prompt_batch.meta_info["sampling_params"]["n"] = 1
 
                 is_last_step = self.global_steps >= self.total_training_steps
-
-                gen_batch.meta_info["sampling_params"] = self.generation_state.sampling_params
                 with _timer("step", self.updating_state.timing_raw):
-                    # generate a batch
+                    # pop those keys for generation
+                    batch_keys = ["input_ids", "attention_mask", "position_ids"]
+                    non_tensor_batch_keys = ["raw_prompt_ids"]
+                    if "multi_modal_inputs" in prompt_batch.non_tensor_batch.keys():
+                        batch_keys.extend(["multi_modal_data", "multi_modal_inputs"])
+                    gen_batch = prompt_batch.pop(batch_keys=batch_keys, non_tensor_batch_keys=non_tensor_batch_keys, meta_info_keys=["sampling_params"])
+
+                    repeat_interleave = not balance_gen
+                    if balance_gen:
+                        gen_batch = gen_batch.repeat(repeat_times=self.config.actor_rollout_ref.rollout.n, interleave=repeat_interleave)
+
                     with _timer("gen", self.updating_state.timing_raw):
                         gen_batch_output = self.actor_rollout_wg.generate_sequences(gen_batch)
 
-                    self.generation_state.prompt_batch.non_tensor_batch["uid"] = np.array([str(uuid.uuid4()) for _ in range(len(self.generation_state.prompt_batch.batch))], dtype=object)
                     # repeat to align with repeated responses in rollout
-                    if self.config.actor_rollout_ref.rollout.balance_gen:
-                        new_batch = self.generation_state.prompt_batch
+                    if gen_batch.meta_info["sampling_params"]["n"] > 1:
+                        new_batch = prompt_batch
                     else:
-                        new_batch = self.generation_state.prompt_batch.repeat(repeat_times=self.config.actor_rollout_ref.rollout.n, interleave=repeat_interleave)
-                    self.generation_state.reset()
+                        new_batch = prompt_batch.repeat(repeat_times=self.config.actor_rollout_ref.rollout.n, interleave=True)
                     new_batch = new_batch.union(gen_batch_output)
+                    self.generation_state.reset()
 
                     with _timer("reward", self.updating_state.timing_raw):
                         # compute scores. Support both model and function-based.
@@ -453,6 +456,8 @@ class RayDAPOTrainer(RayPPOTrainer):
                             continue
                         else:  # Align the batch
                             self.updating_state.batch = self.updating_state.batch[:traj_bsz]
+
+                    # === Updating ===
 
                     assert self.updating_state.batch is not None
                     # NOTE: Update max_tokens per iteration to avoid tensor shape inconsistency
