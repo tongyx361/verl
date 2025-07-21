@@ -6,7 +6,6 @@
 
 # defaults specify the default config from each component
 defaults:
-
   # dp actor config, inheriting from trainer/config/critic/critic.yaml
   - critic
 
@@ -17,7 +16,6 @@ strategy: fsdp
 
 # optimizer configs
 optim:
-
   # Learning rate
   lr: 1e-5
 
@@ -29,7 +27,6 @@ optim:
 
 # model config for the critic
 model:
-
   # Whether to use shared memory for loading the model
   use_shm: False
 
@@ -39,9 +36,8 @@ model:
   # Use remove padding optimization (saves compute)
   use_remove_padding: False
 
-  # FSDP-specific config
+  # DP-specific config
   fsdp_config:
-
     # Whether to offload model parameters to CPU
     param_offload: False
 
@@ -56,7 +52,6 @@ model:
 
     # Policy for wrapping layers with FSDP
     wrap_policy:
-
       # Minimum number of parameters to trigger wrapping
       min_num_params: 0
 

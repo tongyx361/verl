@@ -105,7 +105,7 @@ class MegatronCriticConfig(CriticConfig):
 class FSDPCriticConfig(CriticConfig):
     """Configuration for FSDP-based critic model training.
 
-    The inheritance from CriticConfig provides all base critic configuration plus FSDP-specific settings.
+    The inheritance from CriticConfig provides all base critic configuration plus DP-specific settings.
 
     Args:
         forward_micro_batch_size (int): Forward-only batch size during inference (global).

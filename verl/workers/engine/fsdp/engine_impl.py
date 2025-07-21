@@ -367,7 +367,7 @@ class FSDPEngine(BaseEngine):
 
     def train_mode(self):
         """
-        Return a context manager that switches to training mode with FSDP-specific handling.
+        Return a context manager that switches to training mode with DP-specific handling.
 
         Includes parameter and optimizer offload entry/exit.
         """
@@ -375,7 +375,7 @@ class FSDPEngine(BaseEngine):
 
     def eval_mode(self):
         """
-        Return a context manager that switches to evaluation mode with FSDP-specific handling.
+        Return a context manager that switches to evaluation mode with DP-specific handling.
 
         Includes activation offload entry/exit.
         """

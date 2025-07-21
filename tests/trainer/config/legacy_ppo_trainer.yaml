@@ -6,7 +6,6 @@
 
 # dataset config
 data:
-
   # Tokenizer class or path. If null, it will be inferred from the model.
   tokenizer: null
 
@@ -84,7 +83,6 @@ data:
 
   # Optional: specify a custom dataset class path and name if overriding default loading behavior.
   custom_cls:
-
     # The path to the file containing your customized dataset class. If not specified, pre-implemented dataset will be used.
     path: null
 
@@ -96,7 +94,6 @@ data:
 
   # Data generation configuration for augmenting the dataset.
   datagen:
-
     # The path to the file containing your customized data generation class.
     # E.g. 'pkg://verl.experimental.dynamic_dataset.dynamicgen_dataset'
     path: null
@@ -107,7 +104,6 @@ data:
 
   # settings related to data sampler
   sampler:
-
     # the path to the module containing a curriculum class which implements the
     # AbstractSampler interface
     class_path: null
@@ -117,13 +113,11 @@ data:
 
 # config for actor, rollout and reference model
 actor_rollout_ref:
-
   # Whether it's a hybrid engine, currently only supports hybrid engine
   hybrid_engine: true
 
   # common configs for the model
   model:
-
     # Huggingface model path. This can be either local path or HDFS path.
     path: ~/models/deepseek-llm-7b-chat
 
@@ -170,7 +164,6 @@ actor_rollout_ref:
 
     # Options for fused kernels. If use_fused_kernels is true, this will be used.
     fused_kernel_options:
-
       # Implementation backend for fused kernels. Options: "triton" or "torch".
       impl_backend: torch
 
@@ -179,7 +172,6 @@ actor_rollout_ref:
 
   # actor configs
   actor:
-
     # fsdp, fsdp2 or megatron. fsdp backend used here.
     strategy: fsdp
 
@@ -213,7 +205,6 @@ actor_rollout_ref:
 
     # policy loss config
     policy_loss:
-
       # Loss function mode: vanilla / clip-cov / kl-cov /gpg from https://arxiv.org/abs/2505.22617
       loss_mode: "vanilla"
 
@@ -270,17 +261,15 @@ actor_rollout_ref:
 
     # checkpoint configs
     checkpoint:
-
       # What to include in saved checkpoints
       # with 'hf_model' you can save whole model as hf format, now only use sharded model checkpoint to save space
-      save_contents: ['model', 'optimizer', 'extra']
+      save_contents: ["model", "optimizer", "extra"]
 
       # For more flexibility, you can specify the contents to load from the checkpoint.
       load_contents: ${actor_rollout_ref.actor.checkpoint.save_contents}
 
     # optimizer configs
     optim:
-
       # Learning rate
       lr: 1e-6
 
@@ -307,10 +296,8 @@ actor_rollout_ref:
 
     # configs for FSDP
     fsdp_config:
-
       # policy for wrapping the model
       wrap_policy:
-
         # Minimum number of parameters to trigger wrapping a layer with FSDP
         min_num_params: 0
 
@@ -336,13 +323,11 @@ actor_rollout_ref:
   # Reference model config.
   # Reference model will be enabled when actor.use_kl_loss or/and algorithm.use_kl_in_reward is/are True.
   ref:
-
     # actor_rollout_ref.ref: FSDP config same as actor. For models larger than 7B, it’s recommended to turn on offload for ref by default
     strategy: ${actor_rollout_ref.actor.strategy}
 
     # config for FSDP strategy
     fsdp_config:
-
       # whether to offload parameters in FSDP
       param_offload: False
 
@@ -356,7 +341,6 @@ actor_rollout_ref:
 
       # the wrap policy for FSDP model
       wrap_policy:
-
         # minimum number of params in a wrapped module
         min_num_params: 0
 
@@ -387,7 +371,6 @@ actor_rollout_ref:
 
   # Rollout model config.
   rollout:
-
     # actor_rollout_ref.rollout.name: hf/vllm/sglang.
     name: vllm
 
@@ -402,7 +385,6 @@ actor_rollout_ref:
 
     # Top-p sampling parameter. Default 1.0.
     top_p: 1
-
 
     # typically the same as data max prompt length
     prompt_length: ${data.max_prompt_length}
@@ -475,10 +457,8 @@ actor_rollout_ref:
 
     # Extra inference engine arguments (vllm, sglang).
     engine_kwargs:
-
       # for vllm
       vllm:
-
         # Swap space (in GB) used by inference engine. null uses default (e.g., 4 GB).
         swap_space: null
 
@@ -487,13 +467,11 @@ actor_rollout_ref:
 
       # for sglang
       sglang:
-
         # The attention backend for sglang engine. Options: flashinfer, triton, flashmla, null for default.
         attention_backend: null
 
     # Sampling parameters used during validation.
     val_kwargs:
-
       # sampling parameters for validation
       # Top-k sampling parameter. -1 for vLLM rollout, 0 for HF rollout.
       top_k: -1
@@ -512,7 +490,6 @@ actor_rollout_ref:
 
     # Multi-turn interaction config for tools or chat.
     multi_turn:
-
       # set to True for multi-turn tool interaction tasks; should set rollout.name to sglang as well
       enable: False
 
@@ -563,13 +540,11 @@ actor_rollout_ref:
 
     # [Experimental] agent loop based rollout configs
     agent:
-
       # Number of agent loop workers
       num_workers: 8
 
       # custom async server configs
       custom_async_server:
-
         # Path to the custom async server implementation
         path: null
 
@@ -578,7 +553,6 @@ actor_rollout_ref:
 
   # profiler configs
   profiler:
-
     # Required when using verl.utils.omega_conf_to_dataclass to instantiate dataclass configs in the entrypoint
     _target_: verl.utils.profiler.ProfilerConfig
 
@@ -593,7 +567,6 @@ actor_rollout_ref:
 
 # configs for the critic
 critic:
-
   # Number of rollouts per update (mirrors actor rollout_n)
   rollout_n: ${actor_rollout_ref.rollout.n}
 
@@ -602,7 +575,6 @@ critic:
 
   # optimizer configs
   optim:
-
     # Learning rate
     lr: 1e-5
 
@@ -623,7 +595,6 @@ critic:
 
   # model config for the critic
   model:
-
     # Path to pretrained model weights
     path: ~/models/deepseek-llm-7b-chat
 
@@ -634,7 +605,7 @@ critic:
     tokenizer_path: ${actor_rollout_ref.model.path}
 
     # Hugging Face config override
-    override_config: { }
+    override_config: {}
 
     # External model implementation (optional)
     external_lib: ${actor_rollout_ref.model.external_lib}
@@ -651,9 +622,8 @@ critic:
     # Whether to trust remote code from Hugging Face models
     trust_remote_code: ${actor_rollout_ref.model.trust_remote_code}
 
-    # FSDP-specific config
+    # DP-specific config
     fsdp_config:
-
       # Whether to offload model parameters to CPU
       param_offload: False
 
@@ -668,7 +638,6 @@ critic:
 
       # Policy for wrapping layers with FSDP
       wrap_policy:
-
         # Minimum number of parameters to trigger wrapping
         min_num_params: 0
 
@@ -732,10 +701,9 @@ critic:
 
   # checkpoint configs
   checkpoint:
-
     # What to include in saved checkpoints
     # with 'hf_model' you can save whole model as hf format, now only use sharded model checkpoint to save space
-    save_contents: ['model', 'optimizer', 'extra']
+    save_contents: ["model", "optimizer", "extra"]
 
     # What to include when loading checkpoints
     load_contents: ${critic.checkpoint.save_contents}
@@ -743,7 +711,6 @@ critic:
   # profiler configs
   # the corresponding dataclass is verl.utils.profiler.ProfilerConfig.
   profiler:
-
     # Required when using verl.utils.omega_conf_to_dataclass to instantiate dataclass configs in the entrypoint
     _target_: verl.utils.profiler.ProfilerConfig
 
@@ -758,7 +725,6 @@ critic:
 
 # configs for the reward model
 reward_model:
-
   # Whether to enable reward model. If False, we compute the reward only with the user-defined reward functions.
   # In GSM8K and Math examples, we disable reward model.
   # For RLHF alignment example using full_hh_rlhf, we utilize reward model to assess the responses.
@@ -770,7 +736,6 @@ reward_model:
 
   # model config for reward scoring
   model:
-
     # Input tokenizer. If the reward model’s chat template is inconsistent with the policy,
     # we need to first decode to plaintext, then apply the rm’s chat_template.
     # Then score with RM. If chat_templates are consistent, it can be set to null.
@@ -795,12 +760,10 @@ reward_model:
     # Whether to enable loading a remote code model, default to False
     trust_remote_code: False
 
-    # FSDP-specific config
+    # DP-specific config
     fsdp_config:
-
       # Policy for wrapping layers with FSDP
       wrap_policy:
-
         # Minimum number of parameters to trigger wrapping
         min_num_params: 0
 
@@ -845,7 +808,6 @@ reward_model:
 
   # Cloud/local sandbox fusion configuration for custom reward logic
   sandbox_fusion:
-
     # Cloud/local function URL for sandbox execution
     url: null
 
@@ -857,7 +819,6 @@ reward_model:
 
   # profiler configs
   profiler:
-
     # Required when using verl.utils.omega_conf_to_dataclass to instantiate dataclass configs in the entrypoint
     _target_: verl.utils.profiler.ProfilerConfig
 
@@ -872,7 +833,6 @@ reward_model:
 
 # custom reward function definition
 custom_reward_function:
-
   # The path to the file containing your customized reward function.
   # If not specified, pre-implemented reward functions will be used.
   path: null
@@ -882,7 +842,6 @@ custom_reward_function:
 
 # config for the algorithm
 algorithm:
-
   # Required when using verl.utils.omega_conf_to_dataclass to instantiate dataclass configs in the entrypoint
   _target_: verl.trainer.config.AlgoConfig
 
@@ -906,7 +865,6 @@ algorithm:
 
   # KL control configuration
   kl_ctrl:
-
     # Required when using verl.utils.omega_conf_to_dataclass to instantiate dataclass configs in the entrypoint
     _target_: verl.trainer.config.KLControlConfig
 
@@ -927,7 +885,6 @@ algorithm:
 
   # Preference feedback PPO settings
   pf_ppo:
-
     # Required when using verl.utils.omega_conf_to_dataclass to instantiate dataclass configs in the entrypoint
     _target_: verl.trainer.config.PFPPOConfig
 
@@ -939,7 +896,6 @@ algorithm:
 
 # config for the trainer
 trainer:
-
   # Whether to balance batch sizes across distributed workers
   balance_batch: True
 
@@ -956,7 +912,6 @@ trainer:
   ## reference https://docs.nvidia.com/nsight-systems/UserGuide/index.html
   ## reference https://docs.ray.io/en/latest/ray-observability/user-guides/profiling.html
   controller_nsight_options:
-
     # Select the API(s) to be traced.
     trace: "cuda,nvtx,cublas,ucx"
 
@@ -968,7 +923,6 @@ trainer:
 
   # worker Nvidia Nsight Systems Options. Must set when profile_steps is not None.
   worker_nsight_options:
-
     # Select the API(s) to be traced.
     trace: "cuda,nvtx,cublas,ucx"
 
@@ -994,10 +948,8 @@ trainer:
 
   # Config for npu profiler. Must set when profile_steps is not None and torch_npu is available.
   npu_profile:
-
     # Options for the npu profiler
     options:
-
       # Storage path of collected data.
       save_path: ./profiler_data
 
@@ -1032,7 +984,7 @@ trainer:
   experiment_name: gsm8k
 
   # Logging backends to use: "console", "wandb", etc.
-  logger: [ 'console', 'wandb' ]
+  logger: ["console", "wandb"]
 
   # Number of generations to log during validation
   log_val_generations: 0
@@ -1103,7 +1055,6 @@ trainer:
 
 # configs related to ray initialization
 ray_init:
-
   # Number of CPUs for Ray. Use a fixed number instead of null when using SLURM.
   num_cpus: null
 

@@ -6,7 +6,6 @@
 
 # defaults specify the default config from each component
 defaults:
-
   # dp actor config, inheriting from trainer/config/reward_model/reward_model.yaml
   - reward_model
 
@@ -16,7 +15,6 @@ defaults:
 strategy: fsdp
 
 model:
-
   # Whether to use shared memory for loading the model
   use_shm: False
 
@@ -26,9 +24,8 @@ model:
   # Whether to use fused reward kernels for speedup
   use_fused_kernels: ${actor_rollout_ref.model.use_fused_kernels}
 
-  # FSDP-specific config
+  # DP-specific config
   fsdp_config:
-
     # Policy for wrapping layers with FSDP
     wrap_policy:
       # Minimum number of parameters to trigger wrapping
