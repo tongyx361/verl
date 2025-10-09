@@ -1,4 +1,5 @@
 # Copyright 2025 Individual Contributor: Thibaut Barroyer
+# Copyright 2025 Bytedance Ltd. and/or its affiliates
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -13,12 +14,13 @@
 # limitations under the License.
 
 import importlib.util
+import logging
 import multiprocessing
 import os
 import sys
 import warnings
 from functools import partial
-from typing import Any, Optional
+from typing import Any, Callable, Optional
 
 import ray
 import torch
@@ -30,67 +32,21 @@ from verl.workers.reward_manager import get_reward_manager_cls
 from verl.workers.reward_manager.abstract import AbstractRewardManager, RawRewardFn
 
 
-def _call_with_kwargs(raw_fn, extra_kwargs, *args, **kwargs):
-    """Calls `raw_fn` by merging `extra_kwargs` into call-time `kwargs`, with `extra_kwargs` taking precedence.
-
-    This function is used to merge additional keyword arguments with the original function's arguments.
-    """
-    merged_kwargs = {**kwargs, **extra_kwargs}
-    return raw_fn(*args, **merged_kwargs)
-
-
 def get_custom_reward_fn(config: DictConfig) -> Optional[RawRewardFn]:
     """Load and return a custom reward function from external file.
 
-    Dynamically imports a reward function from a specified file path and wraps
-    it with additional keyword arguments from the configuration.
-
-    Args:
-        config (dict): Configuration dictionary containing custom_reward_function
-                      settings with 'path', 'name', and 'reward_kwargs' fields.
-
-    Returns:
-        callable or None: Wrapped reward function with merged kwargs, or None
-                         if no custom reward function is configured.
-
-    Raises:
-        FileNotFoundError: If the specified reward function file doesn't exist.
-        RuntimeError: If there's an error loading the module from file.
-        AttributeError: If the specified function name isn't found in the module.
+    See `verl.utils.custom.get_custom_fn` for more details.
     """
+    from verl.utils.custom import CustomFunctionConfig, get_custom_fn
 
-    reward_fn_config = config.get("custom_reward_function") or {}
-    file_path = reward_fn_config.get("path")
-    if not file_path:
-        return None
+    reward_fn_config: DictConfig = config.reward_model.get("custom_reward_function")
+    reward_fn_config = CustomFunctionConfig(
+        path=reward_fn_config.get("path"),
+        name=reward_fn_config.get("name"),
+        kwargs=reward_fn_config.get("kwargs") or reward_fn_config.get("reward_kwargs") or {},
+    )
 
-    function_name = reward_fn_config.get("name")
-    assert function_name is not None
-
-    module = sys.modules.get("custom_module", None)
-    if module is None:
-        if not os.path.exists(file_path):
-            raise FileNotFoundError(f"Reward function file '{file_path}' not found.")
-
-        spec = importlib.util.spec_from_file_location("custom_module", file_path)
-        assert spec is not None
-        module = importlib.util.module_from_spec(spec)
-        try:
-            sys.modules["custom_module"] = module
-            assert spec.loader is not None
-            spec.loader.exec_module(module)
-        except Exception as e:
-            raise RuntimeError(f"Error loading module from '{file_path}': {e}") from e
-
-    if not hasattr(module, function_name):
-        raise AttributeError(f"Reward function '{function_name}' not found in '{module.__file__}'.")
-
-    print(f"using customized reward function '{function_name}' from '{module.__file__}'")
-    raw_fn = getattr(module, function_name)
-
-    reward_kwargs = dict(reward_fn_config.get("reward_kwargs", {}))
-
-    return partial(_call_with_kwargs, raw_fn, reward_kwargs)
+    return get_custom_fn(reward_fn_config)
 
 
 def load_reward_manager(

@@ -12,12 +12,3 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
-# Reference:
-# - DAPO: An Open-Source LLM Reinforcement Learning System at Scale
-#   Paper: https://arxiv.org/abs/2503.14476
-# - This implementation references the ReTool implementation: recipe/retool/ in VERL codebase
-
-from .dynamic_filtering import DynamicFilter, keep_mixed_reward
-
-__all__ = ["DynamicFilter", "keep_mixed_reward"]

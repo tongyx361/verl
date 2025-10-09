@@ -13,8 +13,8 @@ actor_rollout_ref:
       weight_decay: 0.01
       lr_warmup_steps: -1
       betas:
-      - 0.9
-      - 0.999
+        - 0.9
+        - 0.999
       clip_grad: 1.0
       min_lr_ratio: 0.0
       num_cycles: 0.5
@@ -69,9 +69,9 @@ actor_rollout_ref:
     checkpoint:
       _target_: verl.trainer.config.CheckpointConfig
       save_contents:
-      - model
-      - optimizer
-      - extra
+        - model
+        - optimizer
+        - extra
       load_contents: ${.save_contents}
       async_save: false
     use_fused_kernels: ${oc.select:actor_rollout_ref.model.use_fused_kernels,false}
@@ -189,7 +189,7 @@ actor_rollout_ref:
     log_prob_max_token_len_per_gpu: ${oc.select:actor_rollout_ref.actor.ppo_max_token_len_per_gpu,16384}
     disable_log_stats: true
     do_sample: true
-    'n': 1
+    "n": 1
     over_sample_rate: 0
     multi_stage_wake_up: false
     engine_kwargs:
@@ -200,7 +200,7 @@ actor_rollout_ref:
       top_k: -1
       top_p: 1.0
       temperature: 0
-      'n': 1
+      "n": 1
       do_sample: false
     multi_turn:
       _target_: verl.workers.config.MultiTurnConfig
@@ -308,8 +308,8 @@ critic:
     weight_decay: 0.01
     lr_warmup_steps: -1
     betas:
-    - 0.9
-    - 0.999
+      - 0.9
+      - 0.999
     clip_grad: 1.0
     min_lr_ratio: 0.0
     num_cycles: 0.5
@@ -363,9 +363,9 @@ critic:
   checkpoint:
     _target_: verl.trainer.config.CheckpointConfig
     save_contents:
-    - model
-    - optimizer
-    - extra
+      - model
+      - optimizer
+      - extra
     load_contents: ${.save_contents}
     async_save: false
   profiler:
@@ -441,11 +441,11 @@ reward_model:
   ulysses_sequence_parallel_size: 1
 algorithm:
   filter_groups:
-    _target_: verl.trainer.config.FilterGroupsConfig
+    _target_: verl.trainer.config.DynamicGroupFilterConfig
     enable: false
     metric: seq_reward
     max_num_gen_batches: 10
-    filter_function: verl.utils.filtering.dynamic_filtering.keep_mixed_reward
+    filter_function: verl.utils.filter.dynamic_group_filter.filter_for_mixed
     filter_kwargs: {}
   _target_: verl.trainer.config.AlgoConfig
   gamma: 1.0
@@ -474,8 +474,8 @@ trainer:
   project_name: verl_examples
   experiment_name: gsm8k
   logger:
-  - console
-  - wandb
+    - console
+    - wandb
   log_val_generations: 0
   rollout_data_dir: null
   validation_data_dir: null
@@ -509,11 +509,11 @@ global_profiler:
       discrete: false
       controller_nsight_options:
         trace: cuda,nvtx,cublas,ucx
-        cuda-memory-usage: 'true'
+        cuda-memory-usage: "true"
         cuda-graph-trace: graph
       worker_nsight_options:
         trace: cuda,nvtx,cublas,ucx
-        cuda-memory-usage: 'true'
+        cuda-memory-usage: "true"
         cuda-graph-trace: graph
         capture-range: cudaProfilerApi
         capture-range-end: null

@@ -490,43 +490,19 @@ def process_validation_metrics(
     return data_src2var2metric2val
 
 
-def compute_raw_reward_metrics(batch: DataProto) -> dict[str, Any]:
+def compute_common_statistics(data: list | torch.Tensor, metric_name: str) -> dict[str, float]:
     """
-    Computes reward-related metrics from the FIRST generation batch BEFORE dynamic filtering.
-
-    IMPORTANT DISTINCTION:
-    - This function computes "before_filtering/reward/*" metrics from token_level_scores
-    - These are computed from the RAW first generation batch before any filtering
-    - This is DIFFERENT from "critic/rewards/*" metrics which are computed from
-      token_level_rewards after filtering and processing via compute_data_metrics()
-
-    PURPOSE:
-    When using dynamic filtering (DAPO), this captures the reward distribution of ALL
-    generated responses, including those that will be filtered out for being too
-    homogeneous. This provides insight into the raw reward signal quality before
-    diversity filtering removes low-variance response groups.
-
-    This function calculates statistics (mean, std, max, min) for sequence-level rewards
-    derived from token-level scores in the first generation batch.
-
-    Args:
-        batch: A DataProto object containing batch data with token-level scores
-
-    Returns:
-        A dictionary of reward metrics including:
-            - before_filtering/reward/mean: Mean sequence reward (pre-filtering)
-            - before_filtering/reward/std: Standard deviation of sequence rewards (pre-filtering)
-            - before_filtering/reward/max: Maximum sequence reward (pre-filtering)
-            - before_filtering/reward/min: Minimum sequence reward (pre-filtering)
-
-        Note: These metrics are distinct from critic/rewards/* which are computed later
-        from processed and filtered data via compute_data_metrics().
+    Computes common statistics (mean, std, max, min, median, q1, q3) for a metric tensor.
     """
-    seq_reward_tensor = batch.batch["token_level_scores"].sum(-1)
-
-    return {
-        "before_filtering/reward/mean": seq_reward_tensor.mean().detach().item(),
-        "before_filtering/reward/std": seq_reward_tensor.std().detach().item(),
-        "before_filtering/reward/max": seq_reward_tensor.max().detach().item(),
-        "before_filtering/reward/min": seq_reward_tensor.min().detach().item(),
+    if not isinstance(data, torch.Tensor):
+        data = torch.tensor(data)
+    stats = {
+        "mean": data.mean().item(),
+        "std": data.std().item(),
+        "max": data.max().item(),
+        "min": data.min().item(),
+        "median": torch.median(data).item(),
+        "q1": torch.quantile(data, 0.25).item(),
+        "q3": torch.quantile(data, 0.75).item(),
     }
+    return {f"{metric_name}/{stat}": stats[stat] for stat in stats}

@@ -11,7 +11,7 @@ data:
 
 reward_model:
   reward_manager: dapo
-  overlong_buffer: 
+  overlong_buffer:
     enable: False # We try to avoid forgetting to set enable
     len: 0
     penalty_factor: 0.0
@@ -19,7 +19,7 @@ reward_model:
 
 algorithm:
   filter_groups:
-    _target_: verl.trainer.config.FilterGroupsConfig
+    _target_: verl.trainer.config.DynamicGroupFilterConfig
     enable: False # We try to avoid forgetting to set enable
     metric: null # acc / score / seq_reward / seq_final_reward / ...
     max_num_gen_batches: 0 # Non-positive values mean no upper limit

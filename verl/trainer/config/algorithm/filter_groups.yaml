@@ -7,7 +7,7 @@
 # Dynamic filter for DAPO: filters out homogeneous groups, keeps diverse responses
 
 # Required when using verl.utils.omega_conf_to_dataclass to instantiate dataclass configs
-_target_: verl.trainer.config.FilterGroupsConfig
+_target_: verl.trainer.config.DynamicGroupFilterConfig
 
 # Whether to enable dynamic filter
 enable: False
@@ -20,7 +20,7 @@ metric: seq_reward
 max_num_gen_batches: 10
 
 # Default filter function for mixed reward filtering
-filter_function: verl.utils.filtering.dynamic_filtering.keep_mixed_reward
+filter_function: verl.utils.filter.dynamic_group_filter.filter_for_mixed
 
 # Additional arguments for the filter function
 filter_kwargs: {}

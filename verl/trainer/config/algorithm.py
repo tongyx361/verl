@@ -13,11 +13,12 @@
 # limitations under the License.
 
 from dataclasses import dataclass, field
-from typing import Any, Optional
+from typing import Any
 
 from verl.base_config import BaseConfig
+from verl.utils.custom import CustomFunctionConfig
 
-__all__ = ["AlgoConfig", "FilterGroupsConfig", "KLControlConfig"]
+__all__ = ["AlgoConfig", "DynamicGroupFilterConfig", "KLControlConfig"]
 
 
 @dataclass
@@ -40,28 +41,30 @@ class KLControlConfig(BaseConfig):
 
 
 @dataclass
-class FilterGroupsConfig(BaseConfig):
-    """Configuration for filter groups (used in DAPO and Entropy).
+class DynamicGroupFilterConfig(BaseConfig):
+    """Configuration for group filtering (used in DAPO, etc.).
 
-    The inheritance from BaseConfig provides omegaconf.DictConfig-like interface for a dataclass config.
+    NOTE: This feature is not compatible with asynchronous reward computation (``launch_reward_fn_async`=True`) yet.
 
-    Args:
-        enable (bool): Whether to enable filter groups.
-        NOTE: This feature is not compatible with asynchronous reward computation (`launch_reward_fn_async=True`).
-        metric (Optional[str]): Metric to use for filtering: "acc", "score", "seq_reward", etc.
-        max_num_gen_batches (int): Maximum number of backfill attempts when collecting diverse responses.
-                                   Non-positive values mean no upper limit (use with caution).
-        filter_function (Optional[str]): Path to filter function (e.g., "my_module.my_filter_func").
-                                        Required when filter_groups is enabled. For the original mixed rewards
-                                        filter, use "verl.utils.filtering.dynamic_filtering.keep_mixed_reward".
-        filter_kwargs (Optional[dict]): Additional arguments for the filter function.
+    Attributes:
+        enable (bool): Whether to enable group filtering.
+        metric (str): Metric to use for filtering like "acc" and "seq_reward". Defaults to ``"seq_reward"``.
+        max_num_gen_batches (int): Maximum number of batch generation attempts when collecting candidate responses.
+            Non-positive values mean no upper limit (use with caution).
+        filter_function (str): Path to the filter function (e.g., "my_package.my_module.my_filter_func").
+            Required when ``filter_groups=True``. By default the original mixed rewards in DAPO is used
+            ("verl.utils.filter.dynamic_group_filter.filter_for_mixed").
+        filter_kwargs (dict): Additional arguments for the filter function.
     """
 
     enable: bool = False
-    metric: Optional[str] = None
+    metric: str = "seq_reward"
     max_num_gen_batches: int = 0
-    filter_function: Optional[str] = "verl.utils.filtering.dynamic_filtering.keep_mixed_reward"
-    filter_kwargs: Optional[dict] = field(default_factory=dict)
+    filter_function: CustomFunctionConfig = field(
+        default_factory=lambda: CustomFunctionConfig(
+            path="verl.utils.filter.dynamic_group_filter", name="filter_for_mixed"
+        )
+    )
 
 
 @dataclass
@@ -80,7 +83,7 @@ class AlgoConfig(BaseConfig):
         kl_ctrl (KLControlConfig): KL control configuration.
         use_pf_ppo (bool): Whether to enable preference feedback PPO.
         pf_ppo (dict[str, Any]): Preference feedback PPO settings.
-        filter_groups (Optional[FilterGroupsConfig]): Dynamic filter configuration, used in DAPO and Entropy
+        filter_groups (DynamicGroupFilterConfig): Configuration for group filtering (used in DAPO, etc.).
     """
 
     gamma: float = 1.0
@@ -92,4 +95,4 @@ class AlgoConfig(BaseConfig):
     kl_ctrl: KLControlConfig = field(default_factory=KLControlConfig)
     use_pf_ppo: bool = False
     pf_ppo: dict[str, Any] = field(default_factory=dict)
-    filter_groups: Optional[FilterGroupsConfig] = None
+    filter_groups: DynamicGroupFilterConfig = field(default_factory=DynamicGroupFilterConfig)
