@@ -19,6 +19,7 @@ This trainer supports model-agonistic model initialization with huggingface
 """
 
 import json
+import logging
 import os
 import uuid
 from collections import defaultdict
@@ -60,6 +61,9 @@ from verl.utils.seqlen_balancing import calculate_workload, get_seqlen_balanced_
 from verl.utils.torch_functional import masked_mean
 from verl.utils.tracking import ValidationGenerationsLogger
 
+logger = logging.getLogger(__name__)
+logger.setLevel(os.getenv("VERL_PPO_LOGGING_LEVEL", "WARN"))
+
 
 @dataclass
 class ResourcePoolManager:
@@ -84,10 +88,26 @@ class ResourcePoolManager:
             # For FSDP backend, using max_colocate_count=3: actor_critic_ref, rollout, reward model (optional)
             # For Megatron backend, we recommend using max_colocate_count>1
             # that can utilize different WorkerGroup for differnt models
-            resource_pool = RayResourcePool(
-                process_on_nodes=process_on_nodes, use_gpu=True, max_colocate_count=3, name_prefix=resource_pool_name
-            )
-            self.resource_pool_dict[resource_pool_name] = resource_pool
+            if isinstance(process_on_nodes, list) and all(isinstance(elem, list) for elem in process_on_nodes):
+                logger.debug("Only rollout will use multiple resource pools for now.")
+                resource_pools = [
+                    RayResourcePool(
+                        process_on_nodes=process_on_node,
+                        use_gpu=True,
+                        max_colocate_count=1,
+                        name_prefix=f"{resource_pool_name}_{index}",
+                    )
+                    for index, process_on_node in enumerate(process_on_nodes)
+                ]
+                self.resource_pool_dict[resource_pool_name] = resource_pools
+            else:
+                resource_pool = RayResourcePool(
+                    process_on_nodes=process_on_nodes,
+                    use_gpu=True,
+                    max_colocate_count=3,
+                    name_prefix=resource_pool_name,
+                )
+                self.resource_pool_dict[resource_pool_name] = resource_pool
 
         self._check_resource_available()
 
