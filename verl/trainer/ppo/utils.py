@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import warnings
-from enum import Enum
+from enum import Enum, auto
 
 from omegaconf import DictConfig
 
@@ -26,16 +26,18 @@ WorkerType = type[Worker]
 class Role(Enum):
     """
     To create more roles dynamically, you can subclass Role and add new members
+    TODO: Decouple "capability" and "usage".
     """
 
-    Actor = 0
-    Rollout = 1
-    ActorRollout = 2
-    Critic = 3
-    RefPolicy = 4
-    RewardModel = 5
-    ActorRolloutRef = 6
-    Env = 7
+    Actor = auto()
+    Rollout = auto()
+    ActorRollout = auto()
+    Critic = auto()
+    RefPolicy = auto()
+    RewardModel = auto()
+    ActorRolloutRef = auto()
+    Env = auto()
+    Validator = auto()
 
     def __str__(self):
         return self._get_role_string()
@@ -49,6 +51,8 @@ class Role(Enum):
             Role.RefPolicy: "ref",
             Role.RewardModel: "rm",
             Role.ActorRolloutRef: "actor_rollout_ref",
+            Role.Env: "env",
+            Role.Validator: "validator",
         }
         return role_mapping.get(self, self.name.lower())
 
@@ -62,6 +66,8 @@ class Role(Enum):
             "ref": cls.RefPolicy,
             "rm": cls.RewardModel,
             "actor_rollout_ref": cls.ActorRolloutRef,
+            "env": cls.Env,
+            "validator": cls.Validator,
         }
         role = string_mapping.get(name.lower())
         if role is None:
