@@ -129,7 +129,6 @@ class ResourcePoolManager:
 
         # check total required gpus can be satisfied
         total_available_gpus = sum(node_available_gpus.values())
-
         total_required_gpus = sum(
             [
                 (n_gpus if isinstance(n_gpus, int) else sum(n_gpus))
