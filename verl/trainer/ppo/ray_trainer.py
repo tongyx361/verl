@@ -129,8 +129,13 @@ class ResourcePoolManager:
 
         # check total required gpus can be satisfied
         total_available_gpus = sum(node_available_gpus.values())
+
         total_required_gpus = sum(
-            [n_gpus for process_on_nodes in self.resource_pool_spec.values() for n_gpus in process_on_nodes]
+            [
+                (n_gpus if isinstance(n_gpus, int) else sum(n_gpus))
+                for process_on_nodes in self.resource_pool_spec.values()
+                for n_gpus in process_on_nodes
+            ]
         )
         if total_available_gpus < total_required_gpus:
             raise ValueError(
