@@ -115,9 +115,20 @@ class ResourcePoolManager:
         """Get the resource pool of the worker_cls"""
         return self.resource_pool_dict[self.mapping[role]]
 
-    def get_n_gpus(self) -> int:
+    def get_n_gpus(self, resource_pool_names: str | list[str] | None = None) -> int:
         """Get the number of gpus in this cluster."""
-        return sum([n_gpus for process_on_nodes in self.resource_pool_spec.values() for n_gpus in process_on_nodes])
+        if isinstance(resource_pool_names, str):
+            resource_pool_names = [resource_pool_names]
+        elif resource_pool_names is None:
+            resource_pool_names = list(self.resource_pool_spec.keys())
+
+        return sum(
+            [
+                (n_gpus if isinstance(n_gpus, int) else sum(n_gpus))
+                for resource_pool_name in resource_pool_names
+                for n_gpus in self.resource_pool_spec[resource_pool_name]
+            ]
+        )
 
     def _check_resource_available(self):
         """Check if the resource pool can be satisfied in this ray cluster."""
