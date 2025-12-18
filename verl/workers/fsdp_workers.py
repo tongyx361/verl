@@ -506,6 +506,10 @@ class ActorRolloutRefWorker(Worker, DistProfilerExtension):
                 use_orig_params=self.use_orig_params,
                 forward_prefetch=fsdp_config.get("forward_prefetch", False),
             )
+            if self.rank == 0:
+                print(f"{self.use_orig_params=}")
+                print(f"{actor_module_fsdp._fsdp_use_orig_params=}")
+                print(f"{actor_module_fsdp=}")
         elif fsdp_strategy == "fsdp2":
             assert CPUOffloadPolicy is not None, "PyTorch version >= 2.4 is required for using fully_shard API (FSDP2)"
             mp_policy = MixedPrecisionPolicy(
