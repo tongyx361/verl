@@ -769,7 +769,7 @@ class ActorRolloutRefWorker(Worker, DistProfilerExtension):
         if self._is_actor or self._is_rollout:
             # we need the model for actor and rollout
             optim_config = self.config.actor.optim if self._is_actor else None
-            fsdp_config = omega_conf_to_dataclass(self.config.actor.fsdp_config)()
+            fsdp_config = omega_conf_to_dataclass(self.config.actor.fsdp_config)
 
             local_path = copy_to_local(self.config.model.path, use_shm=use_shm)
             (
