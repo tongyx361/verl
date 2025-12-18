@@ -28,7 +28,10 @@ from packaging import version
 from torch.distributed import DeviceMesh
 from torch.distributed.fsdp import FullyShardedDataParallel as FSDP
 from torch.distributed.fsdp._runtime_utils import _lazy_init
-from torch.distributed.fsdp.wrap import size_based_auto_wrap_policy, transformer_auto_wrap_policy
+from torch.distributed.fsdp.wrap import (
+    size_based_auto_wrap_policy,
+    transformer_auto_wrap_policy,
+)
 from transformers.trainer_pt_utils import get_module_class_from_name
 
 from verl.utils.device import get_device_id, get_device_name, get_torch_device
@@ -36,16 +39,32 @@ from verl.utils.import_utils import deprecated
 from verl.utils.model import check_exclude_modules, check_target_modules
 
 if version.parse(torch.__version__) >= version.parse("2.6"):
-    from torch.distributed.fsdp import CPUOffloadPolicy, FSDPModule, MixedPrecisionPolicy, fully_shard
+    from torch.distributed.fsdp import (
+        CPUOffloadPolicy,
+        FSDPModule,
+        MixedPrecisionPolicy,
+        fully_shard,
+    )
     from torch.distributed.tensor import Shard
 
     fully_shard_module = torch.distributed.fsdp._fully_shard._fully_shard
 elif version.parse(torch.__version__) >= version.parse("2.4"):
-    from torch.distributed._composable.fsdp import CPUOffloadPolicy, FSDPModule, MixedPrecisionPolicy, fully_shard
+    from torch.distributed._composable.fsdp import (
+        CPUOffloadPolicy,
+        FSDPModule,
+        MixedPrecisionPolicy,
+        fully_shard,
+    )
 
     fully_shard_module = torch.distributed._composable.fsdp.fully_shard
 else:
-    fully_shard, MixedPrecisionPolicy, FSDPModule, CPUOffloadPolicy, fully_shard_module = None, None, None, None, None
+    (
+        fully_shard,
+        MixedPrecisionPolicy,
+        FSDPModule,
+        CPUOffloadPolicy,
+        fully_shard_module,
+    ) = None, None, None, None, None
 
 
 def init_fn(x: torch.nn.Module):
@@ -328,7 +347,8 @@ def parallel_init_module_fn(module: torch.nn.Module, shard_states: dict[str, tor
 
     state2fqn = {}
     for name, state in itertools.chain(
-        module.named_parameters(remove_duplicate=False), module.named_buffers(remove_duplicate=False)
+        module.named_parameters(remove_duplicate=False),
+        module.named_buffers(remove_duplicate=False),
     ):
         state2fqn.setdefault(state, []).append(name)
     # remove standalone parameters and buffers
@@ -340,7 +360,10 @@ def parallel_init_module_fn(module: torch.nn.Module, shard_states: dict[str, tor
         assert param_name in shard_states, f"{param_name} not loaded"
         device = get_device_id()
         if is_param:
-            param = torch.nn.Parameter(torch.empty_like(state.data, device=device), requires_grad=state.requires_grad)
+            param = torch.nn.Parameter(
+                torch.empty_like(state.data, device=device),
+                requires_grad=state.requires_grad,
+            )
         else:  # buffer
             param = torch.empty_like(state.data, device=device)
         loaded = shard_states[param_name]
@@ -416,11 +439,19 @@ def get_fsdp_state_ctx(model, state_type, state_cfg, optim_cfg):
 @deprecated("get_fsdp_state_dict(model, full_state_dict=True, ...)")
 def get_fsdp_full_state_dict(model: torch.nn.Module, offload_to_cpu: bool = True, rank0_only: bool = True):
     """Legacy utility equivalent to ``get_fsdp_state_dict(model, full_state_dict=True, ...)``."""
-    return get_fsdp_state_dict(model, full_state_dict=True, offload_to_cpu=offload_to_cpu, rank0_only=rank0_only)
+    return get_fsdp_state_dict(
+        model,
+        full_state_dict=True,
+        offload_to_cpu=offload_to_cpu,
+        rank0_only=rank0_only,
+    )
 
 
 def get_fsdp_state_dict(
-    model: torch.nn.Module, full_state_dict: bool = True, offload_to_cpu: bool = True, rank0_only: bool = True
+    model: torch.nn.Module,
+    full_state_dict: bool = True,
+    offload_to_cpu: bool = True,
+    rank0_only: bool = True,
 ):
     """
     Get the state dict from an FSDP model (adaptive to FSDP1/2).
@@ -439,18 +470,39 @@ def get_fsdp_state_dict(
     """
     model_fsdp_version = fsdp_version(model)
     if model_fsdp_version == 1:
-        from torch.distributed.fsdp import FullStateDictConfig, StateDictType
+        from torch.distributed.fsdp import (
+            FullStateDictConfig,
+            ShardedStateDictConfig,
+            StateDictType,
+        )
 
-        state_dict_config = FullStateDictConfig(offload_to_cpu=offload_to_cpu, rank0_only=rank0_only)
-        state_type = StateDictType.FULL_STATE_DICT if full_state_dict else StateDictType.SHARDED_STATE_DICT
-        with get_fsdp_state_ctx(model, state_type=state_type, state_cfg=state_dict_config, optim_cfg=None):
+        if full_state_dict:
+            state_dict_type = StateDictType.FULL_STATE_DICT
+            state_dict_config = FullStateDictConfig(offload_to_cpu=offload_to_cpu, rank0_only=rank0_only)
+        else:
+            state_dict_type = StateDictType.SHARDED_STATE_DICT
+            assert not rank0_only, "Sharded state dict should not be rank0_only."
+            state_dict_config = ShardedStateDictConfig(offload_to_cpu=offload_to_cpu)
+
+        with get_fsdp_state_ctx(
+            model,
+            state_type=state_dict_type,
+            state_cfg=state_dict_config,
+            optim_cfg=None,
+        ):
             state_dict = model.state_dict()
+
         return state_dict
     elif model_fsdp_version == 2:
-        from torch.distributed.checkpoint.state_dict import StateDictOptions, get_model_state_dict
+        from torch.distributed.checkpoint.state_dict import (
+            StateDictOptions,
+            get_model_state_dict,
+        )
 
         state_dict_config = StateDictOptions(
-            full_state_dict=full_state_dict, cpu_offload=offload_to_cpu, broadcast_from_rank0=not rank0_only
+            full_state_dict=full_state_dict,
+            cpu_offload=offload_to_cpu,
+            broadcast_from_rank0=not rank0_only,
         )
         state_dict = get_model_state_dict(model, options=state_dict_config)
         return state_dict
@@ -469,11 +521,17 @@ def fsdp2_load_full_state_dict(model: torch.nn.Module, full_state: dict, device_
     """
 
     if version.parse(torch.__version__) >= version.parse("2.7.0"):
-        from torch.distributed.checkpoint.state_dict import StateDictOptions, set_model_state_dict
+        from torch.distributed.checkpoint.state_dict import (
+            StateDictOptions,
+            set_model_state_dict,
+        )
     else:
         # official torch 2.6.0 set_model_state_dict API leads to OOM
         # use torch 2.7.0 copy from verl/third_party/torch/distributed/checkpoint
-        from verl.third_party.torch.distributed.checkpoint.state_dict import StateDictOptions, set_model_state_dict
+        from verl.third_party.torch.distributed.checkpoint.state_dict import (
+            StateDictOptions,
+            set_model_state_dict,
+        )
 
     # To broadcast, it needs to be instantiated in the GPU.
     if dist.get_rank() == 0:
@@ -688,7 +746,15 @@ def replace_lora_wrapper(k, peft_config):
     Returns:
         str: Transformed parameter key for base layer.
     """
-    stacked_params = ["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj"]
+    stacked_params = [
+        "q_proj",
+        "k_proj",
+        "v_proj",
+        "o_proj",
+        "gate_proj",
+        "up_proj",
+        "down_proj",
+    ]
     if k.endswith(".weight"):
         module_k = k[: -len(".weight")]
         if check_exclude_modules(peft_config, module_k):
