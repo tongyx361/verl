@@ -502,7 +502,8 @@ def get_fsdp_state_dict(
         state_dict_config = StateDictOptions(
             full_state_dict=full_state_dict,
             cpu_offload=offload_to_cpu,
-            broadcast_from_rank0=not rank0_only,
+            # full_state_dict=False and broadcast_from_rank0=False -> Shard per rank
+            broadcast_from_rank0=full_state_dict and not rank0_only,
         )
         state_dict = get_model_state_dict(model, options=state_dict_config)
         return state_dict
