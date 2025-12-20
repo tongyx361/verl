@@ -37,7 +37,7 @@ class Role(Enum):
     RewardModel = auto()
     ActorRolloutRef = auto()
     Env = auto()
-    Evaluator = auto()
+    Validator = auto()
 
     def __str__(self):
         return self._get_role_string()
@@ -52,7 +52,7 @@ class Role(Enum):
             Role.RewardModel: "rm",
             Role.ActorRolloutRef: "actor_rollout_ref",
             Role.Env: "env",
-            Role.Evaluator: "evaluator",
+            Role.Validator: "validator",
         }
         return role_mapping.get(self, self.name.lower())
 
@@ -67,7 +67,7 @@ class Role(Enum):
             "rm": cls.RewardModel,
             "actor_rollout_ref": cls.ActorRolloutRef,
             "env": cls.Env,
-            "validator": cls.Evaluator,
+            "validator": cls.Validator,
         }
         role = string_mapping.get(name.lower())
         if role is None:
