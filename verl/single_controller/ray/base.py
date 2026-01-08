@@ -16,7 +16,7 @@ import logging
 import os
 import socket
 from copy import deepcopy
-from typing import Any, Optional
+from typing import Any, NamedTuple, Optional
 
 import numpy as np
 import ray
@@ -111,37 +111,78 @@ class RayResourcePool(ResourcePool):
         self.detached = detached
         self.accelerator_type = accelerator_type
 
-    def get_placement_groups(self, strategy="STRICT_PACK", name=None, device_name="cuda"):
+    def get_placement_groups(
+        self, strategy: str = "STRICT_PACK", name: str | None = None, device_name: str = "cuda"
+    ) -> list[PlacementGroup]:
         if self.pgs is not None:
             return self.pgs
 
-        pg_name_prefix = (
-            name if name else f"{self.name_prefix}verl_group_{'_'.join([str(count) for count in self._store])}:"
-        )
-        # print(f"pg_name_prefix = {pg_name_prefix}")
         if device_name == "npu":
-            device_name = "NPU"
+            core_resource_name = "NPU"
         elif device_name == "cuda":
-            device_name = "GPU"
+            core_resource_name = "GPU"
+        else:
+            raise ValueError(f"Unknown {device_name=}")
+        pg_name_prefix = name
+        if pg_name_prefix is None:
+            pg_name_prefix = f"{self.name_prefix}verl_group_{'_'.join([str(count) for count in self._store])}:"
+        pg_specs = self.get_placement_group_specs(
+            pg_strategy=strategy, pg_name_prefix=pg_name_prefix, core_resource_name=core_resource_name
+        )
 
-        bundle = {"CPU": self.max_colocate_count}
-        if self.use_gpu:
-            bundle[device_name] = 1
-            if self.accelerator_type is not None:
-                bundle[self.accelerator_type] = 1e-4
-        pg_scheme = [[bundle.copy() for _ in range(process_count)] for process_count in self._store]
-
-        lifetime = "detached" if self.detached else None
-
-        pgs = [
-            placement_group(bundles=bundles, strategy=strategy, name=pg_name_prefix + str(idx), lifetime=lifetime)
-            for idx, bundles in enumerate(pg_scheme)
-        ]
-
+        pgs = [placement_group(**spec) for spec in pg_specs]
         ray.get([pg.ready() for pg in pgs])
 
         self.pgs = sort_placement_group_by_node_ip(pgs)
         return pgs
+
+    def get_placement_group_specs(
+        self, pg_strategy: str = "STRICT_PACK", pg_name_prefix: str | None = None, core_resource_name: str = "GPU"
+    ) -> list[dict[str, Any]]:
+        base_bundle = {"CPU": self.max_colocate_count}
+        if self.use_gpu:
+            base_bundle[core_resource_name] = 1
+            if self.accelerator_type is not None:
+                base_bundle[self.accelerator_type] = 1e-4
+        bundle_lists = [[base_bundle.copy() for _ in range(process_count)] for process_count in self.store]
+        lifetime = "detached" if self.detached else None
+        specs = [
+            {
+                "bundles": bundles,
+                "strategy": pg_strategy,
+                "name": pg_name_prefix + str(i_pg) if isinstance(pg_name_prefix, str) else "",
+                "lifetime": lifetime,
+            }
+            for (i_pg, bundles) in enumerate(bundle_lists)
+        ]
+        return specs
+
+    @staticmethod
+    def init_pgs_for_global_resource_pools(
+        resource_pools: list["RayResourcePool"],
+        pg_strategy: str = "STRICT_PACK",
+        pg_name_prefix: str | None = None,
+        core_resource_name: str = "GPU",
+        pack_pgs: bool = True,
+    ) -> None:
+        pg_spec_lists = [
+            rp.get_placement_group_specs(
+                pg_strategy=pg_strategy, pg_name_prefix=pg_name_prefix, core_resource_name=core_resource_name
+            )
+            for rp in resource_pools
+        ]
+        all_pgs = [placement_group(**spec) for pg_specs in pg_spec_lists for spec in pg_specs]
+        ray.get([pg.ready() for pg in all_pgs])
+
+
+class RayPlacementGroupSpec(NamedTuple):
+    bundles: list[dict[str, float]]
+    strategy: str = "PACK"
+    name: str = ""
+    lifetime: str | None = None
+
+    def __hash__(self) -> int:
+        return hash(self._asdict())
 
 
 class SubRayResourcePool(RayResourcePool):

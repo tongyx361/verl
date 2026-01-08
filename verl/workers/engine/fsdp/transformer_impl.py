@@ -238,7 +238,7 @@ class FSDPEngine(BaseEngine):
             module.to(torch_dtype)
 
             if self.model_config.enable_gradient_checkpointing:
-                module.gradient_checkpointing_enable(gradient_checkpointing_kwargs={"use_reentrant": True})
+                module.gradient_checkpointing_enable(gradient_checkpointing_kwargs={"use_reentrant": False})
         return module
 
     def _build_lora_module(self, module):

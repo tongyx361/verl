@@ -278,7 +278,7 @@ class FSDPSFTTrainer:
                 self.model = self.model.to(torch_dtype)
 
         if self.config.model.enable_gradient_checkpointing:
-            self.model.gradient_checkpointing_enable(gradient_checkpointing_kwargs={"use_reentrant": True})
+            self.model.gradient_checkpointing_enable(gradient_checkpointing_kwargs={"use_reentrant": False})
 
         log_gpu_memory_usage("After model allocation", logger=logger)
 
