@@ -22,6 +22,7 @@ import logging
 import math
 import os
 import pickle
+from collections import defaultdict
 from dataclasses import dataclass, field
 from typing import Any, Callable, Optional
 
@@ -201,11 +202,9 @@ def union_numpy_dict(tensor_dict1: dict[str, np.ndarray], tensor_dict2: dict[str
 def list_of_dict_to_dict_of_list(list_of_dict: list[dict]):
     if len(list_of_dict) == 0:
         return {}
-    keys = list_of_dict[0].keys()
-    output = {key: [] for key in keys}
+    output = defaultdict(list)
     for data in list_of_dict:
         for key, item in data.items():
-            assert key in output
             output[key].append(item)
     return output
 
