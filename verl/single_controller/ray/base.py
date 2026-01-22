@@ -112,7 +112,11 @@ class RayResourcePool(ResourcePool):
         self.accelerator_type = accelerator_type
 
     def get_placement_groups(
-        self, strategy: str = "STRICT_PACK", name: str | None = None, device_name: str = "cuda"
+        self,
+        strategy: str = "STRICT_PACK",
+        name: str | None = None,
+        device_name: str = "cuda",
+        wait_for_ready: bool = True,
     ) -> list[PlacementGroup]:
         if self.pgs is not None:
             return self.pgs
@@ -131,10 +135,14 @@ class RayResourcePool(ResourcePool):
         )
 
         pgs = [placement_group(**spec) for spec in pg_specs]
-        ray.get([pg.ready() for pg in pgs])
 
-        self.pgs = sort_placement_group_by_node_ip(pgs)
-        return pgs
+        if wait_for_ready:
+            ray.get([pg.ready() for pg in pgs])
+
+            pgs = sort_placement_group_by_node_ip(pgs)
+
+        self.pgs = pgs
+        return self.pgs
 
     def get_placement_group_specs(
         self, pg_strategy: str = "STRICT_PACK", pg_name_prefix: str | None = None, core_resource_name: str = "GPU"
