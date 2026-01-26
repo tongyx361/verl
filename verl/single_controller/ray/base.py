@@ -47,6 +47,11 @@ def get_random_string(length: int) -> str:
 
 def func_generator(self, method_name, dispatch_fn, collect_fn, execute_fn, blocking):
     show_tags = os.getenv("VERL_LOGGING_SHOW_TAGS", "").split(",")
+    if "func_generator" in show_tags:
+        print(
+            f"Entering func_generator({self=}, {method_name=}, {dispatch_fn=}, "
+            f"{collect_fn=}, {execute_fn=}, {blocking=})"
+        )
 
     class Functor:
         def __call__(this, *args, **kwargs):
