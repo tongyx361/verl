@@ -55,13 +55,13 @@ def func_generator(self, method_name, dispatch_fn, collect_fn, execute_fn, block
 
     class Functor:
         def __call__(this, *args, **kwargs):
-            if f"wg_{method_name}" in show_tags:
+            if True:
                 _start_time = time.perf_counter()
 
             args, kwargs = dispatch_fn(self, *args, **kwargs)
             padding_count = kwargs.pop(_padding_size_key, 0)
 
-            if f"wg_{method_name}" in show_tags:
+            if True:
                 _dispatch_end_time = time.perf_counter()
                 _dispatch_time = _dispatch_end_time - _start_time
                 _elapsed_time = _dispatch_end_time - _start_time
@@ -72,7 +72,7 @@ def func_generator(self, method_name, dispatch_fn, collect_fn, execute_fn, block
                 )
 
             output = execute_fn(method_name, *args, **kwargs)
-            if f"wg_{method_name}" in show_tags:
+            if True:
                 _execute_end_time = time.perf_counter()
                 _execute_time = _execute_end_time - _dispatch_end_time
                 _elapsed_time = _execute_end_time - _start_time
@@ -84,7 +84,7 @@ def func_generator(self, method_name, dispatch_fn, collect_fn, execute_fn, block
             if blocking:
                 output = ray.get(output)
 
-            if f"wg_{method_name}" in show_tags:
+            if True:
                 _get_end_time = time.perf_counter()
                 _get_time = _get_end_time - _execute_end_time
                 _elapsed_time = _get_end_time - _start_time
@@ -96,7 +96,7 @@ def func_generator(self, method_name, dispatch_fn, collect_fn, execute_fn, block
 
             output = collect_fn(self, output)
 
-            if f"wg_{method_name}" in show_tags:
+            if True:
                 _collect_end_time = time.perf_counter()
                 _collect_time = _collect_end_time - _get_end_time
                 _elapsed_time = _collect_end_time - _start_time
@@ -113,7 +113,7 @@ def func_generator(self, method_name, dispatch_fn, collect_fn, execute_fn, block
                 elif isinstance(output, list):
                     output = output[:-padding_count]
 
-            if f"wg_{method_name}" in show_tags:
+            if True:
                 _elapsed_time = time.perf_counter() - _start_time
                 _datetime_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                 print(f"{_datetime_str} | DEBUG | WorkerGroup.{method_name} | total time: {_elapsed_time:.3f}s")
