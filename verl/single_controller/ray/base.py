@@ -55,6 +55,10 @@ def func_generator(self, method_name, dispatch_fn, collect_fn, execute_fn, block
 
     class Functor:
         def __call__(this, *args, **kwargs):
+            print(
+                f"Entering Functor.__call__({self=}, {method_name=}, ...), "
+                f"{show_tags=}, {('wg_' + method_name) in show_tags=}"
+            )
             if f"wg_{method_name}" in show_tags:
                 _start_time = time.perf_counter()
 
