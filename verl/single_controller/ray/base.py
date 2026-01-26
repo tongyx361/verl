@@ -50,7 +50,7 @@ def func_generator(self, method_name, dispatch_fn, collect_fn, execute_fn, block
     if "func_generator" in show_tags:
         print(
             f"Entering func_generator({self=}, {method_name=}, {dispatch_fn=}, "
-            f"{collect_fn=}, {execute_fn=}, {blocking=}), {show_tags=}, {method_name in show_tags=}"
+            f"{collect_fn=}, {execute_fn=}, {blocking=}), {show_tags=}, {('wg_' + method_name) in show_tags=}"
         )
 
     class Functor:
