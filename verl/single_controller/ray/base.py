@@ -15,7 +15,9 @@ import inspect
 import logging
 import os
 import socket
+import time
 from copy import deepcopy
+from datetime import datetime
 from typing import Any, NamedTuple, Optional
 
 import numpy as np
@@ -44,20 +46,72 @@ def get_random_string(length: int) -> str:
 
 
 def func_generator(self, method_name, dispatch_fn, collect_fn, execute_fn, blocking):
+    show_tags = os.getenv("VERL_LOGGING_SHOW_TAGS", "").split(",")
+
     class Functor:
         def __call__(this, *args, **kwargs):
+            if f"wg_{method_name}" in show_tags:
+                _start_time = time.perf_counter()
+
             args, kwargs = dispatch_fn(self, *args, **kwargs)
             padding_count = kwargs.pop(_padding_size_key, 0)
+
+            if f"wg_{method_name}" in show_tags:
+                _dispatch_end_time = time.perf_counter()
+                _dispatch_time = _dispatch_end_time - _start_time
+                _elapsed_time = _dispatch_end_time - _start_time
+                _datetime_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                print(
+                    f"{_datetime_str} | DEBUG | WorkerGroup.{method_name} | "
+                    f"dispatch time: {_dispatch_time:.3f}/{_elapsed_time:.3f}s"
+                )
+
             output = execute_fn(method_name, *args, **kwargs)
+            if f"wg_{method_name}" in show_tags:
+                _execute_end_time = time.perf_counter()
+                _execute_time = _execute_end_time - _dispatch_end_time
+                _elapsed_time = _execute_end_time - _start_time
+                _datetime_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                print(
+                    f"{_datetime_str} | DEBUG | WorkerGroup.{method_name} | "
+                    f"execute time: {_execute_time:.3f}/{_elapsed_time:.3f}s"
+                )
             if blocking:
                 output = ray.get(output)
+
+            if f"wg_{method_name}" in show_tags:
+                _get_end_time = time.perf_counter()
+                _get_time = _get_end_time - _execute_end_time
+                _elapsed_time = _get_end_time - _start_time
+                _datetime_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                print(
+                    f"{_datetime_str} | DEBUG | WorkerGroup.{method_name} | "
+                    f"get time: {_get_time:.3f}/{_elapsed_time:.3f}s"
+                )
+
             output = collect_fn(self, output)
+
+            if f"wg_{method_name}" in show_tags:
+                _collect_end_time = time.perf_counter()
+                _collect_time = _collect_end_time - _get_end_time
+                _elapsed_time = _collect_end_time - _start_time
+                _datetime_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                print(
+                    f"{_datetime_str} | DEBUG | WorkerGroup.{method_name} | "
+                    f"collect time: {_collect_time:.3f}/{_elapsed_time:.3f}s"
+                )
+
             if padding_count > 0:
                 if isinstance(output, DataProto):
                     indices = [i for i in range(len(output))][:-padding_count]
                     output = output.select_idxs(indices)
                 elif isinstance(output, list):
                     output = output[:-padding_count]
+
+            if f"wg_{method_name}" in show_tags:
+                _elapsed_time = time.perf_counter() - _start_time
+                _datetime_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                print(f"{_datetime_str} | DEBUG | WorkerGroup.{method_name} | total time: {_elapsed_time:.3f}s")
             return output
 
     # use class type to pass the method_name to get a better observability

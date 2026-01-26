@@ -334,7 +334,10 @@ DISPATCH_MODE_FN_REGISTRY = {
         "dispatch_fn": dispatch_all_to_all,
         "collect_fn": collect_all_to_all,
     },
-    Dispatch.DP_COMPUTE: {"dispatch_fn": dispatch_dp_compute, "collect_fn": collect_dp_compute},
+    Dispatch.DP_COMPUTE: {
+        "dispatch_fn": dispatch_dp_compute,
+        "collect_fn": collect_dp_compute,
+    },
     Dispatch.DP_COMPUTE_PROTO: {
         "dispatch_fn": dispatch_dp_compute_data_proto,
         "collect_fn": collect_dp_compute_data_proto,
@@ -343,7 +346,10 @@ DISPATCH_MODE_FN_REGISTRY = {
         "dispatch_fn": dispatch_dp_compute_data_proto_with_func,
         "collect_fn": collect_dp_compute_data_proto,
     },
-    Dispatch.DP_COMPUTE_METRIC: {"dispatch_fn": dispatch_dp_compute_data_proto, "collect_fn": collect_dp_compute},
+    Dispatch.DP_COMPUTE_METRIC: {
+        "dispatch_fn": dispatch_dp_compute_data_proto,
+        "collect_fn": collect_dp_compute,
+    },
     Dispatch.DIRECT_ROLLOUT_METHOD: {
         "dispatch_fn": dummy_direct_rollout_call,
         "collect_fn": dummy_direct_rollout_call,
@@ -362,7 +368,10 @@ def register_dispatch_mode(dispatch_mode_name, dispatch_fn, collect_fn):
     dispatch_mode = Dispatch.register(dispatch_mode_name)
     _check_dispatch_mode(dispatch_mode)
     assert dispatch_mode not in DISPATCH_MODE_FN_REGISTRY, f"dispatch_mode_name {dispatch_mode_name} already exists"
-    DISPATCH_MODE_FN_REGISTRY[dispatch_mode] = {"dispatch_fn": dispatch_fn, "collect_fn": collect_fn}
+    DISPATCH_MODE_FN_REGISTRY[dispatch_mode] = {
+        "dispatch_fn": dispatch_fn,
+        "collect_fn": collect_fn,
+    }
 
 
 def update_dispatch_mode(dispatch_mode, dispatch_fn, collect_fn):
@@ -371,7 +380,10 @@ def update_dispatch_mode(dispatch_mode, dispatch_fn, collect_fn):
     """
     _check_dispatch_mode(dispatch_mode)
     assert dispatch_mode in DISPATCH_MODE_FN_REGISTRY, f"dispatch_mode {dispatch_mode} not found"
-    DISPATCH_MODE_FN_REGISTRY[dispatch_mode] = {"dispatch_fn": dispatch_fn, "collect_fn": collect_fn}
+    DISPATCH_MODE_FN_REGISTRY[dispatch_mode] = {
+        "dispatch_fn": dispatch_fn,
+        "collect_fn": collect_fn,
+    }
 
 
 def get_predefined_execute_fn(execute_mode):
@@ -415,7 +427,12 @@ def _materialize_futures(*args, **kwargs):
     return new_args, kwargs
 
 
-def register(dispatch_mode=Dispatch.ALL_TO_ALL, execute_mode=Execute.ALL, blocking=True, materialize_futures=True):
+def register(
+    dispatch_mode=Dispatch.ALL_TO_ALL,
+    execute_mode=Execute.ALL,
+    blocking=True,
+    materialize_futures=True,
+):
     """Register a function with distributed execution configuration.
 
     This decorator registers a function with specific dispatch and execution modes
@@ -457,7 +474,11 @@ def register(dispatch_mode=Dispatch.ALL_TO_ALL, execute_mode=Execute.ALL, blocki
             return await func(*args, **kwargs)
 
         wrapper = async_inner if inspect.iscoroutinefunction(func) else inner
-        attrs = {"dispatch_mode": dispatch_mode, "execute_mode": execute_mode, "blocking": blocking}
+        attrs = {
+            "dispatch_mode": dispatch_mode,
+            "execute_mode": execute_mode,
+            "blocking": blocking,
+        }
         setattr(wrapper, MAGIC_ATTR, attrs)
         return wrapper
 
