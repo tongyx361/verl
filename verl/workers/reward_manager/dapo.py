@@ -62,7 +62,8 @@ class DAPORewardManager(AbstractRewardManager):
             else:
                 return data.batch["rm_scores"]
 
-        reward_tensor = torch.zeros_like(data.batch["responses"], dtype=torch.float32)
+        max_response_length = data.meta_info["max_response_length"]
+        reward_tensor = torch.zeros((len(data), max_response_length), dtype=torch.float32)
         reward_extra_info = defaultdict(list)
 
         already_print_data_sources = {}
@@ -77,7 +78,7 @@ class DAPORewardManager(AbstractRewardManager):
             valid_prompt_length = data_item.batch["attention_mask"][:prompt_length].sum()
             valid_prompt_ids = prompt_ids[-valid_prompt_length:]
 
-            response_ids = data_item.batch["responses"]
+            response_ids = data_item.batch["input_ids"][:, prompt_length:]
             valid_response_length = data_item.batch["attention_mask"][prompt_length:].sum()
             valid_response_ids = response_ids[:valid_response_length]
 
