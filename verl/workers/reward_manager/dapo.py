@@ -68,13 +68,11 @@ class DAPORewardManager(AbstractRewardManager):
 
         already_print_data_sources = {}
 
+        prompt_length = data.meta_info["max_prompt_length"]
         for i in range(len(data)):
             data_item = data[i]  # DataProtoItem
 
-            prompt_ids = data_item.batch["prompts"]
-
-            prompt_length = prompt_ids.shape[-1]
-
+            prompt_ids = data_item.batch["input_ids"][:, :prompt_length]
             valid_prompt_length = data_item.batch["attention_mask"][:prompt_length].sum()
             valid_prompt_ids = prompt_ids[-valid_prompt_length:]
 
