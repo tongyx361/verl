@@ -8,8 +8,6 @@ ACTOR_STRATEGY=${ACTOR_STRATEGY:-"fsdp"}  # fsdp or megatron
 # Download model if not exists
 MODEL_ID=${MODEL_ID:-Qwen/Qwen2.5-0.5B-Instruct}
 MODEL_PATH=${MODEL_PATH:-${HOME}/models/${MODEL_ID}}
-huggingface-cli download "${MODEL_ID}" --local-dir "${MODEL_PATH}"
-
 
 rollout_mode="async"
 rollout_name="vllm" # sglang or vllm
@@ -63,8 +61,6 @@ echo "Running transferqueue with ${ACTOR_STRATEGY} strategy"
 echo "Total GPUs: ${NUM_GPUS}"
 
 # Common parameters for both FSDP and Megatron
-# For Ascend NPU, please add
-# trainer.device=npu
 common_params=(
     data.train_files="${HOME}/data/gsm8k/train.parquet"
     data.val_files="${HOME}/data/gsm8k/test.parquet"
@@ -124,6 +120,13 @@ common_params=(
     trainer.val_before_train=True
 )
 
+    # Detect device
+    device_name=$(python3 - <<'EOF'
+from verl.utils.device import get_device_name
+print(get_device_name())
+EOF
+)
+
 if [ "${ACTOR_STRATEGY}" == "fsdp" ]; then
     echo "Running TransferQueue training with FSDP strategy..."
     # FSDP specific parameters; fsdp_size need to be -1
@@ -133,7 +136,7 @@ if [ "${ACTOR_STRATEGY}" == "fsdp" ]; then
     ref_offload=True
     actor_offload=False
 
-    python3 -m recipe.transfer_queue.main_ppo \
+    python3 -m verl.experimental.transfer_queue.main_ppo \
         --config-path=config \
         --config-name='transfer_queue_ppo_trainer' \
         "${common_params[@]}" \
@@ -163,10 +166,19 @@ elif [ "${ACTOR_STRATEGY}" == "megatron" ]; then
     ref_offload=True
     actor_offload=False
 
+    extra_flash_args=()
+
+    if [ "$device_name" == "npu" ]; then
+        echo "Detect NPU device, enabling FlashAttention..."
+        extra_flash_args+=(
+            ++actor_rollout_ref.actor.megatron.override_transformer_config.use_flash_attn=True
+        )
+    fi
+
     # For Ascend NPU, please add:
     #++actor_rollout_ref.actor.megatron.override_transformer_config.use_flash_attn=True \
     #++actor_rollout_ref.ref.megatron.override_transformer_config.use_flash_attn=True \
-    python3 -m recipe.transfer_queue.main_ppo \
+    python3 -m verl.experimental.transfer_queue.main_ppo \
         --config-path=config \
         --config-name='transfer_queue_ppo_megatron_trainer' \
         "${common_params[@]}" \
@@ -182,6 +194,7 @@ elif [ "${ACTOR_STRATEGY}" == "megatron" ]; then
         actor_rollout_ref.ref.megatron.pipeline_model_parallel_size=${train_pp} \
         actor_rollout_ref.ref.megatron.tensor_model_parallel_size=${train_tp} \
         actor_rollout_ref.ref.megatron.param_offload=${ref_offload} \
+        "${extra_flash_args[@]}" \
         2>&1 | tee "$log_file" $@
 else
     echo "Error: Unknown strategy ${ACTOR_STRATEGY}. Please use 'fsdp' or 'megatron'"

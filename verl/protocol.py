@@ -809,7 +809,7 @@ class DataProto:
 
     def make_iterator(self, mini_batch_size, epochs, seed=None, dataloader_kwargs=None):
         r"""Make an iterator from the DataProto. This is built upon that TensorDict can be used as a normal Pytorch
-        dataset. See https://pytorch.org/tensordict/tutorials/data_fashion for more details.
+        dataset. See https://pytorch.org/tensordict/stable/tutorials/data_fashion for more details.
 
 
         Args:
@@ -1222,8 +1222,17 @@ class DataProtoFuture:
     def get(self):
         output = ray.get(self.futures)  # dp_size.
         for o in output:
-            assert isinstance(o, DataProto)
-        output = self.collect_fn(output)  # select dp, concat
+            assert isinstance(o, DataProto | TensorDict)
+
+        if isinstance(output[0], DataProto):
+            output = DataProto.concat(output)  # select dp, concat
+        elif isinstance(output[0], TensorDict):
+            from verl.utils.tensordict_utils import concat_tensordict
+
+            output = concat_tensordict(output)
+        else:
+            raise TypeError(f"Unknown type {type(o[0])} in DataProtoFuture")
+
         if self.dispatch_fn is not None:
             output = self.dispatch_fn(output)  # split in batch dim, select using dp
         return output
