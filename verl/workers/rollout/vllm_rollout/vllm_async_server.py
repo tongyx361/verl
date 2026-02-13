@@ -17,8 +17,9 @@ import inspect
 import json
 import logging
 import os
+import time
 from pprint import pprint
-from typing import Any, Callable, Optional
+from typing import TYPE_CHECKING, Any, Callable, Optional
 
 import numpy as np
 import ray
@@ -34,6 +35,7 @@ from vllm.lora.request import LoRARequest
 from vllm.outputs import RequestOutput
 from vllm.usage.usage_lib import UsageContext
 from vllm.v1.engine.async_llm import AsyncLLM
+from vllm.v1.metrics.loggers import LoggingStatLogger, PrometheusStatLogger
 
 from verl.single_controller.ray import RayClassWithInitArgs
 from verl.utils.config import omega_conf_to_dataclass
@@ -53,6 +55,11 @@ from verl.workers.rollout.vllm_rollout.utils import (
     build_cli_args_from_config,
     get_vllm_max_lora_rank,
 )
+
+if TYPE_CHECKING:
+    from vllm.v1.engine.output_processor import OutputProcessor
+    from vllm.v1.metrics.stats import SchedulerStats
+
 
 _VLLM_VERSION = version.parse(vllm.__version__)
 
@@ -96,6 +103,8 @@ class vLLMHttpServer:
         gpus_per_node: int,
         nnodes: int,
         cuda_visible_devices: str,
+        engine_client_cls: type[AsyncLLM] = AsyncLLM,
+        output_processor_cls: type[OutputProcessor] | None = None,
     ):
         """
         Args:
@@ -162,6 +171,9 @@ class vLLMHttpServer:
             self._master_port = None
             self._dp_rpc_port = None
             self._dp_master_port = None
+
+        self._engine_client_cls = engine_client_cls
+        self._output_processor_cls = output_processor_cls
 
         logger.info(
             f"vLLMHttpServer, replica_rank: {self.replica_rank}, node_rank: {self.node_rank}, "
@@ -428,8 +440,12 @@ class vLLMHttpServer:
             kwargs["enable_log_requests"] = engine_args.enable_log_requests
         if "disable_log_stats" in fn_args:
             kwargs["disable_log_stats"] = engine_args.disable_log_stats
+        if self._output_processor_cls is not None:
+            kwargs["output_processor_cls"] = self._output_processor_cls
 
-        engine_client = AsyncLLM.from_vllm_config(vllm_config=vllm_config, usage_context=usage_context, **kwargs)
+        engine_client = self._engine_client_cls.from_vllm_config(
+            vllm_config=vllm_config, usage_context=usage_context, **kwargs
+        )
 
         # Don't keep the dummy data in memory
         await engine_client.reset_mm_cache()
@@ -488,7 +504,8 @@ class vLLMHttpServer:
         image_data: Optional[list[Any]] = None,
         video_data: Optional[list[Any]] = None,
         priority: int = 0,
-    ) -> TokenOutput:
+        return_request_output: bool = False,
+    ) -> TokenOutput | RequestOutput:
         """Generate sequence with token-in-token-out."""
         # Calculate the maximum possible new tokens based on available context space
         # This serves as a safety upper bound
@@ -552,6 +569,9 @@ class vLLMHttpServer:
         async for output in generator:
             final_res = output
         assert final_res is not None
+
+        if return_request_output:
+            return final_res
 
         token_ids = final_res.outputs[0].token_ids
         log_probs = None
@@ -750,6 +770,52 @@ class vLLMHttpServer:
             logger.error(f"Error aborting request {request_id}: {e}")
             return {"aborted": False, "request_id": request_id, "error": str(e)}
 
+    async def snapshot(self, prometheus_count_names: list[str]) -> dict[str, Any]:
+        timestamp = time.time()  # NOTE: `perf_counter` might be inconsistent between processes.
+
+        scheduler_stats: SchedulerStats = self._logging_stat_logger.last_scheduler_stats
+        prometheus_counts = self.get_prometheus_counts(prometheus_count_names)
+
+        return {
+            "timestamp": timestamp,
+            "scheduler_stats": scheduler_stats,
+            "prometheus_counts": prometheus_counts,
+        }
+
+    def get_prometheus_counts(self, names: list[str]) -> dict[str, int]:
+        """Get prometheus counter values."""
+        prometheus_logger = self._prometheus_logger
+
+        metric_dict: dict[str, int] = {}
+        for name in names:
+            counter = getattr(prometheus_logger, f"counter_{name}")
+            metrics = counter[0].collect()  # Engine 0
+            for metric in metrics:
+                for sample in metric.samples:
+                    if sample.name == f"vllm:{name}_total":
+                        metric_dict[name] = int(sample.value)
+
+        return metric_dict
+
+    @property
+    def _logging_stat_logger(self) -> LoggingStatLogger:
+        logger_manager = self.engine.logger_manager
+        assert logger_manager is not None
+
+        logging_stat_logger = None
+        for stat_logger in logger_manager.per_engine_logger_dict[0]:  # Engine 0
+            if isinstance(stat_logger, LoggingStatLogger):
+                logging_stat_logger = stat_logger
+                break
+        assert logging_stat_logger is not None
+        return logging_stat_logger
+
+    @property
+    def _prometheus_logger(self) -> PrometheusStatLogger:
+        logger_manager = self.engine.logger_manager
+        assert logger_manager is not None
+        return logger_manager.prometheus_logger
+
 
 _rollout_worker_actor_cls = ray.remote(ServerAdapter)
 
@@ -762,9 +828,13 @@ class vLLMReplica(RolloutReplica):
         model_config: HFModelConfig,
         gpus_per_node: int = 8,
         is_reward_model: bool = False,
+        engine_client_cls: type[AsyncLLM] = AsyncLLM,
+        output_processor_cls: type[OutputProcessor] | None = None,
     ):
         super().__init__(replica_rank, config, model_config, gpus_per_node, is_reward_model)
         self.server_class = ray.remote(vLLMHttpServer)
+        self._engine_client_cls = engine_client_cls
+        self._output_processor_cls = output_processor_cls
 
     def get_ray_class_with_init_args(self) -> RayClassWithInitArgs:
         """Get rollout worker actor class for colocated and standalone mode."""
@@ -834,6 +904,8 @@ class vLLMReplica(RolloutReplica):
                 gpus_per_node=gpus_per_replica_node,
                 nnodes=nnodes,
                 cuda_visible_devices=node_cuda_visible_devices,
+                engine_client_cls=self._engine_client_cls,
+                output_processor_cls=self._output_processor_cls,
             )
             self.servers.append(server)
 
