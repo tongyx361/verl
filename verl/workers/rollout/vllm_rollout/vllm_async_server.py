@@ -501,7 +501,7 @@ class vLLMHttpServer:
     async def generate(
         self,
         prompt_ids: list[int],
-        sampling_params: dict[str, Any],
+        sampling_params: dict[str, Any] | SamplingParams,
         request_id: str,
         image_data: Optional[list[Any]] = None,
         video_data: Optional[list[Any]] = None,
@@ -509,34 +509,36 @@ class vLLMHttpServer:
         return_request_output: bool = False,
     ) -> TokenOutput | RequestOutput:
         """Generate sequence with token-in-token-out."""
-        # Calculate the maximum possible new tokens based on available context space
-        # This serves as a safety upper bound
-        max_possible_tokens = self.config.max_model_len - len(prompt_ids)
-        if max_possible_tokens < 0:
-            raise ValueError(
-                f"Prompt length ({len(prompt_ids)}) exceeds the model's maximum context length "
-                f"({self.config.max_model_len})."
+        if isinstance(sampling_params, dict):
+            # Calculate the maximum possible new tokens based on available context space
+            # This serves as a safety upper bound
+            max_possible_tokens = self.config.max_model_len - len(prompt_ids)
+            if max_possible_tokens < 0:
+                raise ValueError(
+                    f"Prompt length ({len(prompt_ids)}) exceeds the model's maximum context length "
+                    f"({self.config.max_model_len})."
+                )
+
+            # Determine max_tokens from sampling_params or use configured response_length as default
+            if "max_tokens" in sampling_params:
+                max_tokens = sampling_params.pop("max_tokens")
+            elif "max_new_tokens" in sampling_params:
+                # support sglang-style 'max_new_tokens' param
+                max_tokens = sampling_params.pop("max_new_tokens")
+            else:
+                # Default to a calculation that considers configured lengths
+                max_tokens = self.config.response_length + self.config.prompt_length - len(prompt_ids)
+
+            # Clamp max_tokens to the valid range [0, max_possible_tokens]
+            max_tokens = max(0, min(max_tokens, max_possible_tokens))
+
+            assert max_tokens <= max_possible_tokens, (
+                f"max_tokens {max_tokens} exceeds available context space {max_possible_tokens}"
             )
+            sampling_params["logprobs"] = 0 if sampling_params.pop("logprobs", False) else None
+            sampling_params.setdefault("repetition_penalty", self.config.get("repetition_penalty", 1.0))
+            sampling_params = SamplingParams(max_tokens=max_tokens, **sampling_params)
 
-        # Determine max_tokens from sampling_params or use configured response_length as default
-        if "max_tokens" in sampling_params:
-            max_tokens = sampling_params.pop("max_tokens")
-        elif "max_new_tokens" in sampling_params:
-            # support sglang-style 'max_new_tokens' param
-            max_tokens = sampling_params.pop("max_new_tokens")
-        else:
-            # Default to a calculation that considers configured lengths
-            max_tokens = self.config.response_length + self.config.prompt_length - len(prompt_ids)
-
-        # Clamp max_tokens to the valid range [0, max_possible_tokens]
-        max_tokens = max(0, min(max_tokens, max_possible_tokens))
-
-        assert max_tokens <= max_possible_tokens, (
-            f"max_tokens {max_tokens} exceeds available context space {max_possible_tokens}"
-        )
-        sampling_params["logprobs"] = 0 if sampling_params.pop("logprobs", False) else None
-        sampling_params.setdefault("repetition_penalty", self.config.get("repetition_penalty", 1.0))
-        sampling_params = SamplingParams(max_tokens=max_tokens, **sampling_params)
         prompt_ids = _qwen2_5_vl_dedup_image_tokens(prompt_ids, self.model_config.processor)
         multi_modal_data = {}
         if image_data is not None:
