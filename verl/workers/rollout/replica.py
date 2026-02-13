@@ -169,10 +169,16 @@ class RolloutReplica(ABC):
         self.workers = worker_group.workers
         await self.launch_servers()
 
-    async def init_standalone(self):
+    async def init_standalone(self, worker_group: RayWorkerGroup | None = None):
         """Init standalone rollout server, create new resource pool for this rollout."""
         # create resource pool for this rollout
         self.rollout_mode = RolloutMode.STANDALONE
+        if worker_group is not None:
+            self.resource_pool = worker_group.resource_pool
+            self.workers = worker_group.workers
+            await self.launch_servers()
+            return
+
         resource_pool_name = (
             f"rollout_pool_{self.replica_rank}"
             if not self.is_reward_model
