@@ -30,9 +30,10 @@ class DAPORewardManager(RewardManagerBase):
         self.is_async_reward_score = inspect.iscoroutinefunction(self.compute_score)
 
         # DAPO Reward Config
-        overlong_buffer_cfg = config.reward.get("reward_kwargs", {}).get("overlong_buffer_cfg", None)
+        reward_kwargs = config.reward.get("reward_kwargs", {})
+        overlong_buffer_cfg = reward_kwargs.get("overlong_buffer_cfg", None)
         self.overlong_buffer_cfg = overlong_buffer_cfg
-        self.max_resp_len = config.reward.get("reward_kwargs", {}).get("max_resp_len", None)
+        self.max_resp_len = reward_kwargs.get("max_resp_len", None)
         self.reward_router_address = reward_router_address
         self.reward_model_tokenizer = reward_model_tokenizer
 
@@ -52,14 +53,22 @@ class DAPORewardManager(RewardManagerBase):
     async def run_single(self, data: DataProto) -> dict:
         assert len(data) == 1, "Only support single data item"
         data_item = data[0]
-        response_ids = data_item.batch["responses"]
-        response_length = response_ids.shape[-1]
-        valid_response_length = data_item.batch["attention_mask"][-response_length:].sum()
-        valid_response_ids = response_ids[:valid_response_length]
-
+        attention_mask = data_item.batch["attention_mask"]
         data_source = data_item.non_tensor_batch["data_source"]
         ground_truth = data_item.non_tensor_batch["reward_model"]["ground_truth"]
         extra_info = data_item.non_tensor_batch.get("extra_info", {})
+
+        if "responses" in data_item.batch:
+            response_ids = data_item.batch["responses"]
+        elif "input_ids" in data_item.batch and "max_prompt_length" in data_item.meta_info:
+            max_prompt_length = data_item.meta_info["max_prompt_length"]
+            response_ids = data_item.batch["input_ids"][max_prompt_length:]
+        else:
+            raise ValueError("response_ids can not be found in batch")
+
+        response_length = response_ids.shape[-1]
+        valid_response_length = attention_mask[-response_length:].sum()
+        valid_response_ids = response_ids[:valid_response_length]
 
         response_str = await self.loop.run_in_executor(
             None, lambda: self.tokenizer.decode(valid_response_ids, skip_special_tokens=True)
