@@ -301,7 +301,11 @@ def chunk_tensordict(td: TensorDict, chunks: int) -> list[TensorDict]:
     )
     chunk_size = len(td) // chunks
     keys = {key for key, val in td.items() if isinstance(val, torch.Tensor) and val.is_nested and val.dim() >= 3}
-    new_td = TensorDict({k: v for k, v in td.items() if k not in keys}, batch_size=td.batch_size, device=td.device)
+    new_td = TensorDict(
+        {k: v for k, v in td.items() if k not in keys},
+        batch_size=td.batch_size,
+        device=td.device,
+    )
 
     tds = new_td.chunk(chunks=chunks)
     for key in keys:
@@ -370,7 +374,7 @@ def get_tensordict(tensor_dict: dict[str, torch.Tensor | list], non_tensor_dict:
             # Convert to NonTensorStack to handle nested structures
             tensor_dict[key] = NonTensorStack.from_list([NonTensorData(item) for item in val])
 
-        assert isinstance(val, torch.Tensor | list)
+        assert isinstance(val, torch.Tensor | list), f"{key=}: {val=}"
 
         if batch_size is None:
             batch_size = val.size(0) if isinstance(val, torch.Tensor) else len(val)
@@ -538,7 +542,11 @@ def make_iterator(tensordict: TensorDict, mini_batch_size, epochs, seed=None, da
     idx_lst = torch.arange(tensordict.shape[0])
 
     train_dataloader = DataLoader(
-        dataset=idx_lst, batch_size=mini_batch_size, collate_fn=lambda x: x, generator=generator, **dataloader_kwargs
+        dataset=idx_lst,
+        batch_size=mini_batch_size,
+        collate_fn=lambda x: x,
+        generator=generator,
+        **dataloader_kwargs,
     )
 
     def get_data():
