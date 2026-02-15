@@ -775,7 +775,7 @@ class vLLMHttpServer:
             logger.error(f"Error aborting request {request_id}: {e}")
             return {"aborted": False, "request_id": request_id, "error": str(e)}
 
-    async def snapshot(self, prometheus_count_names: list[str]) -> dict[str, Any]:
+    async def snapshot(self, prometheus_count_names: list[str] | None = None) -> dict[str, Any]:
         timestamp = time.time()  # NOTE: `perf_counter` might be inconsistent between processes.
 
         scheduler_stats: SchedulerStats = self._logging_stat_logger.last_scheduler_stats
