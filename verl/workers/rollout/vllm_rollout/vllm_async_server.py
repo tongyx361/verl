@@ -781,7 +781,7 @@ class vLLMHttpServer:
         Coalesce in a single function to minimize communication overhead.
 
         Args:
-            prometheus_count_names: List of prometheus counter names to snapshot.
+            prometheus_count_names (list[str] | None): List of prometheus counter names to snapshot.
 
         Returns:
             dict[str, Any]: Snapshot of the current state of the server.
