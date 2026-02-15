@@ -776,7 +776,22 @@ class vLLMHttpServer:
             return {"aborted": False, "request_id": request_id, "error": str(e)}
 
     async def snapshot(self, prometheus_count_names: list[str] | None = None) -> dict[str, Any]:
-        timestamp = time.time()  # NOTE: `perf_counter` might be inconsistent between processes.
+        """Snapshot the current state of the server.
+
+        Coalesce in a single function to minimize communication overhead.
+
+        Args:
+            prometheus_count_names: List of prometheus counter names to snapshot.
+
+        Returns:
+            dict[str, Any]: Snapshot of the current state of the server.
+
+                - timestamp (float): Timestamp of the snapshot from ``time.time()``.
+                    Note that `perf_counter` might be inconsistent between processes.
+                - scheduler_stats (SchedulerStats): Scheduler statistics from the logging stat logger.
+                - prometheus_counts (dict[str, int]): Prometheus counter values.
+        """
+        timestamp = time.time()
 
         scheduler_stats: SchedulerStats = self._logging_stat_logger.last_scheduler_stats
 
