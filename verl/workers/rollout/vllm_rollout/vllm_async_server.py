@@ -779,13 +779,17 @@ class vLLMHttpServer:
         timestamp = time.time()  # NOTE: `perf_counter` might be inconsistent between processes.
 
         scheduler_stats: SchedulerStats = self._logging_stat_logger.last_scheduler_stats
-        prometheus_counts = self.get_prometheus_counts(prometheus_count_names)
 
-        return {
+        snapshot = {
             "timestamp": timestamp,
             "scheduler_stats": scheduler_stats,
-            "prometheus_counts": prometheus_counts,
         }
+
+        if prometheus_count_names:
+            prometheus_counts = self.get_prometheus_counts(prometheus_count_names)
+            snapshot["prometheus_counts"] = prometheus_counts
+
+        return snapshot
 
     def get_prometheus_counts(self, names: list[str]) -> dict[str, int]:
         """Get prometheus counter values."""
