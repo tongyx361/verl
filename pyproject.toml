@@ -111,3 +111,6 @@ verl = [
   "trainer/config/*.yaml",
   "trainer/config/*/*.yaml",
 ]
+
+[tool.pyright]
+extraPaths = ["/vllm"]
