@@ -169,27 +169,37 @@ class RolloutReplica(ABC):
         self.workers = worker_group.workers
         await self.launch_servers()
 
-    async def init_standalone(self, worker_group: RayWorkerGroup | None = None):
+    async def init_standalone(
+        self, worker_group: RayWorkerGroup | None = None, resource_pool: RayResourcePool | None = None
+    ):
         """Init standalone rollout server, create new resource pool for this rollout."""
         # create resource pool for this rollout
         self.rollout_mode = RolloutMode.STANDALONE
         if worker_group is not None:
+            assert resource_pool is None or resource_pool == worker_group.resource_pool, (
+                "worker_group and resource_pool cannot be both provided"
+            )
             self.resource_pool = worker_group.resource_pool
             self.workers = worker_group.workers
             await self.launch_servers()
             return
 
-        resource_pool_name = (
-            f"rollout_pool_{self.replica_rank}"
-            if not self.is_reward_model
-            else f"rollout_pool_reward_{self.replica_rank}"
-        )
-        resource_pool_spec = {
-            resource_pool_name: [self.gpus_per_replica_node] * self.nnodes,
-        }
-        resource_pool_manager = ResourcePoolManager(resource_pool_spec=resource_pool_spec, mapping=None)
-        resource_pool_manager.create_resource_pool()
-        self.resource_pool = resource_pool_manager.resource_pool_dict[resource_pool_name]
+        if self.resource_pool is not None:
+            if resource_pool is not None:
+                assert self.resource_pool is None
+                self.resource_pool = resource_pool
+            else:
+                resource_pool_name = (
+                    f"rollout_pool_{self.replica_rank}"
+                    if not self.is_reward_model
+                    else f"rollout_pool_reward_{self.replica_rank}"
+                )
+                resource_pool_spec = {
+                    resource_pool_name: [self.gpus_per_replica_node] * self.nnodes,
+                }
+                resource_pool_manager = ResourcePoolManager(resource_pool_spec=resource_pool_spec, mapping=None)
+                resource_pool_manager.create_resource_pool()
+                self.resource_pool = resource_pool_manager.resource_pool_dict[resource_pool_name]
 
         # create worker group for this rollout
         use_gpu = self.rollout_worker_use_gpu()
