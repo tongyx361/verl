@@ -184,7 +184,7 @@ class RolloutReplica(ABC):
             await self.launch_servers()
             return
 
-        if self.resource_pool is not None:
+        if self.resource_pool is None:
             if resource_pool is not None:
                 assert self.resource_pool is None
                 self.resource_pool = resource_pool
