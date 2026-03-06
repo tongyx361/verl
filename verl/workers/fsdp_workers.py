@@ -172,6 +172,10 @@ class ActorRolloutRefWorker(Worker, DistProfilerExtension):
         self.ulysses_device_mesh = None
         self.ulysses_sequence_parallel_size = self.config.actor.get("ulysses_sequence_parallel_size", 1)
         dp = world_size // self.ulysses_sequence_parallel_size
+        print(
+            f"DEBUG: {world_size=}, {self.config.actor.fsdp_config.fsdp_size=}, "
+            f"{dp=}, {self.ulysses_sequence_parallel_size=}"
+        )
         if self.ulysses_sequence_parallel_size > 1:
             self.ulysses_device_mesh = init_device_mesh(
                 device_name, mesh_shape=(dp, self.ulysses_sequence_parallel_size), mesh_dim_names=["dp", "sp"]
