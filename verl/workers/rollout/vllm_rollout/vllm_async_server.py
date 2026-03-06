@@ -292,13 +292,16 @@ class vLLMHttpServer:
             )
             compilation_config["cudagraph_mode"] = "PIECEWISE"
 
+        if "worker_extension_cls" not in engine_kwargs:
+            engine_kwargs["worker_extension_cls"] = (
+                "verl.workers.rollout.vllm_rollout.utils.vLLMColocateWorkerExtension"
+            )
         compilation_config = json.dumps(compilation_config)
         args = {
             "dtype": self.config.dtype,
             "load_format": self.config.load_format,
             "skip_tokenizer_init": False,
             "distributed_executor_backend": "mp",
-            "worker_extension_cls": "verl.workers.rollout.vllm_rollout.utils.vLLMColocateWorkerExtension",
             "trust_remote_code": self.model_config.trust_remote_code,
             "max_model_len": self.config.max_model_len,
             "max_num_seqs": self.config.max_num_seqs,
