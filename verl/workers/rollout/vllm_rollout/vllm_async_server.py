@@ -202,13 +202,14 @@ class vLLMHttpServer:
         timeout: float | None = None,
         args: tuple = (),
         kwargs: dict[str, Any] | None = None,
-    ):
-        await self.engine.collective_rpc(
+    ) -> list[Any]:
+        executor_proc_return_vals = await self.engine.collective_rpc(
             method=method,
             timeout=timeout,
             args=args,
             kwargs=kwargs,
         )
+        return executor_proc_return_vals
 
     async def launch_server(self, master_address: str = None, master_port: int = None, dp_rpc_port: int = None):
         if self.node_rank != 0:
